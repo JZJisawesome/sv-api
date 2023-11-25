@@ -1,0 +1,51 @@
+[package]
+name = "svapi"
+version = "0.1.0"
+description = "Idiomatic Rust abstractions for interfacing with SystemVerilog."
+authors = ["John Zacarias Jekel <john@jekel.ca>"]
+readme = "README.md"
+#homepage = ""
+repository = "https://git.jekel.ca/JZJ/svapi"
+license = "MIT"
+edition = "2021"
+keywords = ["verilog", "systemverilog", "dpi", "pli", "vpi"]
+#categories = ["", "", ""]
+#default-run = ""
+#documentation = ""
+
+[features]
+default = []
+
+[dependencies]
+sv-bindings = { path = "../sv-bindings" }
+
+#TODO
+#nightly-features = ["nightly-features-benches"]
+#nightly-features-benches = []
+
+[lib]
+crate-type = ["cdylib"]
+name = "svapi"
+path = "lib/lib.rs"
+
+[[bin]]
+name = "testing"
+path = "src/testing.rs"
+
+[profile.dev]
+incremental = true
+
+[profile.release]
+codegen-units = 1
+strip = true
+overflow-checks = false
+panic = "abort"
+lto = true
+
+[profile.release-with-debug]
+inherits = "release"
+strip = false
+overflow-checks = false
+panic = "abort"
+lto = false
+debug = true

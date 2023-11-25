@@ -1,0 +1,3 @@
+cargo build
+iverilog ./hello.v -o hello.vvp
+vvp -M . -m svapi hello.vvp
