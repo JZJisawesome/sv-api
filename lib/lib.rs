@@ -42,12 +42,35 @@ macro_rules! sv_println {
     };
 }
 
+macro_rules! vlog_startup_routines {
+    //($($arg:tt),*) => {
+    ($($arg:ident),*) => {//TODO support closures, functions in another module or part of a trait (with::), etc
+        mod __svapi_vlog_startup_routines {
+            extern "C" fn __svapi_call_vlog_startup_routines() {
+                $(
+                    super::$arg();
+                )*
+            }
+
+            //SAFETY: We must end vlog_startup_routines with a null pointer, so we do so with None
+            //Although there's no unsafe {} here, the simulator which will load the library
+            //and reference this symbol will expect this to be upheld
+            #[no_mangle]
+            #[used]
+            static vlog_startup_routines: [Option<extern "C" fn()>; 2usize] = [
+                Some(__svapi_call_vlog_startup_routines),
+                None
+            ];
+        }
+    };
+}
+
 /* ------------------------------------------------------------------------------------------------
  * Constants
  * --------------------------------------------------------------------------------------------- */
 
-#[no_mangle]
-pub static vlog_startup_routines: [Option<extern "C" fn()>; 2usize] = [Some(call_startup_routines), None];
+//#[no_mangle]
+//pub static vlog_startup_routines: [Option<extern "C" fn()>; 2usize] = [Some(call_startup_routines), None];
 
 /* ------------------------------------------------------------------------------------------------
  * Static Variables
@@ -61,112 +84,144 @@ pub static vlog_startup_routines: [Option<extern "C" fn()>; 2usize] = [Some(call
 
 #[derive(Debug)]
 struct VpiHandle {
-    handle: Option<sv_bindings::vpiHandle>,
+    handle: sv_bindings::vpiHandle,
+}
+
+#[derive(Debug)]
+struct ObjectIterator {
+    object_type: ObjectType,
+    iterator_handle: Option<VpiHandle>,
 }
 
 #[derive(Clone, Copy, Debug)]
-enum ObjectType {
-    Always,               // always procedure
-    AssignStmt,           // quasi-continuous assignment
-    Assignment,           // procedural assignment
-    Begin,                // block statement
-    Case,                 // case statement
-    CaseItem,             // case statement item
-    Constant,             // numerical constant or string literal
-    ContAssign,           // continuous assignment
-    Deassign,             // deassignment statement
-    DefParam,             // defparam
-    DelayControl,         // delay statement (e.g., #10)
-    Disable,              // named block disable statement
-    EventControl,         // wait on event, e.g., @e
-    EventStmt,            // event trigger, e.g., ->e
-    For,                  // for statement
-    Force,                // force statement
-    Forever,              // forever statement
-    Fork,                 // fork-join block
-    FuncCall,             // function call
-    Function,             // function
-    Gate,                 // primitive gate
-    If,                   // if statement
-    IfElse,               // if–else statement
-    Initial,              // initial procedure
-    IntegerVar,           // integer variable
-    InterModPath,         // intermodule wire delay
-    Iterator,             // iterator
-    IODecl,               // input/output declaration
-    Memory,               // behavioral memory
-    MemoryWord,           // single word of memory
-    ModPath,              // module path for path delays
-    Module,               // module instance
-    NamedBegin,           // named block statement
-    NamedEvent,           // event variable
-    NamedFork,            // named fork-join block
-    Net,                  // scalar or vector net
-    NetBit,               // bit of vector net
-    NullStmt,             // a semicolon. Ie. #10 ;
-    Operation,            // behavioral operation
-    ParamAssign,          // module parameter assignment
-    Parameter,            // module parameter
-    PartSelect,           // part-select
-    PathTerm,             // terminal of module path
-    Port,                 // module port
-    PortBit,              // bit of vector module port
-    PrimTerm,             // primitive terminal
-    RealVar,              // real variable
-    Reg,                  // scalar or vector reg
-    RegBit,               // bit of vector reg
-    Release,              // release statement
-    Repeat,               // repeat statement
-    RepeatControl,        // repeat control in an assign stmt
-    SchedEvent,           // vpi_put_value() event
-    SpecParam,            // specparam
-    Switch,               // transistor switch
-    SysFuncCall,          // system function call
-    SysTaskCall,          // system task call
-    TableEntry,           // UDP state table entry
-    Task,                 // task
-    TaskCall,             // task call
-    Tchk,                 // timing check
-    TchkTerm,             // terminal of timing check
-    TimeVar,              // time variable
-    TimeQueue,            // simulation event queue
-    Udp,                  // user-defined primitive
-    UdpDefn,              // UDP definition
-    UserSystf,            // user-defined system task/function
-    VarSelect,            // variable array selection
-    Wait,                 // wait statement
-    While,                // while statement
+#[repr(i32)]
+pub enum ObjectType {
+    Always = sv_bindings::vpiAlways,               // always procedure
+    AssignStmt = sv_bindings::vpiAssignStmt,       // quasi-continuous assignment
+    Assignment = sv_bindings::vpiAssignment,       // procedural assignment
+    Begin = sv_bindings::vpiBegin,                 // block statement
+    Case = sv_bindings::vpiCase,                   // case statement
+    CaseItem = sv_bindings::vpiCaseItem,           // case statement item
+    Constant = sv_bindings::vpiConstant,           // numerical constant or string literal
+    ContAssign = sv_bindings::vpiContAssign,       // continuous assignment
+    Deassign = sv_bindings::vpiDeassign,           // deassignment statement
+    DefParam = sv_bindings::vpiDefParam,           // defparam
+    DelayControl = sv_bindings::vpiDelayControl,   // delay statement (e.g., #10)
+    Disable = sv_bindings::vpiDisable,             // named block disable statement
+    EventControl = sv_bindings::vpiEventControl,   // wait on event, e.g., @e
+    EventStmt = sv_bindings::vpiEventStmt,         // event trigger, e.g., ->e
+    For = sv_bindings::vpiFor,                     // for statement
+    Force = sv_bindings::vpiForce,                 // force statement
+    Forever = sv_bindings::vpiForever,             // forever statement
+    Fork = sv_bindings::vpiFork,                   // fork-join block
+    FuncCall = sv_bindings::vpiFuncCall,           // function call
+    Function = sv_bindings::vpiFunction,           // function
+    Gate = sv_bindings::vpiGate,                   // primitive gate
+    If = sv_bindings::vpiIf,                       // if statement
+    IfElse = sv_bindings::vpiIfElse,               // if–else statement
+    Initial = sv_bindings::vpiInitial,             // initial procedure
+    IntegerVar = sv_bindings::vpiIntegerVar,       // integer variable
+    InterModPath = sv_bindings::vpiInterModPath,   // intermodule wire delay
+    Iterator = sv_bindings::vpiIterator,           // iterator
+    IODecl = sv_bindings::vpiIODecl,               // input/output declaration
+    Memory = sv_bindings::vpiMemory,               // behavioral memory
+    MemoryWord = sv_bindings::vpiMemoryWord,       // single word of memory
+    ModPath = sv_bindings::vpiModPath,             // module path for path delays
+    Module = sv_bindings::vpiModule,               // module instance
+    NamedBegin = sv_bindings::vpiNamedBegin,       // named block statement
+    NamedEvent = sv_bindings::vpiNamedEvent,       // event variable
+    NamedFork = sv_bindings::vpiNamedFork,         // named fork-join block
+    Net = sv_bindings::vpiNet,                     // scalar or vector net
+    NetBit = sv_bindings::vpiNetBit,               // bit of vector net
+    NullStmt = sv_bindings::vpiNullStmt,           // a semicolon. Ie. #10 ;
+    Operation = sv_bindings::vpiOperation,         // behavioral operation
+    ParamAssign = sv_bindings::vpiParamAssign,     // module parameter assignment
+    Parameter = sv_bindings::vpiParameter,         // module parameter
+    PartSelect = sv_bindings::vpiPartSelect,       // part-select
+    PathTerm = sv_bindings::vpiPathTerm,           // terminal of module path
+    Port = sv_bindings::vpiPort,                   // module port
+    PortBit = sv_bindings::vpiPortBit,             // bit of vector module port
+    PrimTerm = sv_bindings::vpiPrimTerm,           // primitive terminal
+    RealVar = sv_bindings::vpiRealVar,             // real variable
+    Reg = sv_bindings::vpiReg,                     // scalar or vector reg
+    RegBit = sv_bindings::vpiRegBit,               // bit of vector reg
+    Release = sv_bindings::vpiRelease,             // release statement
+    Repeat = sv_bindings::vpiRepeat,               // repeat statement
+    RepeatControl = sv_bindings::vpiRepeatControl, // repeat control in an assign stmt
+    SchedEvent = sv_bindings::vpiSchedEvent,       // vpi_put_value() event
+    SpecParam = sv_bindings::vpiSpecParam,         // specparam
+    Switch = sv_bindings::vpiSwitch,               // transistor switch
+    SysFuncCall = sv_bindings::vpiSysFuncCall,     // system function call
+    SysTaskCall = sv_bindings::vpiSysTaskCall,     // system task call
+    TableEntry = sv_bindings::vpiTableEntry,       // UDP state table entry
+    Task = sv_bindings::vpiTask,                   // task
+    TaskCall = sv_bindings::vpiTaskCall,           // task call
+    Tchk = sv_bindings::vpiTchk,                   // timing check
+    TchkTerm = sv_bindings::vpiTchkTerm,           // terminal of timing check
+    TimeVar = sv_bindings::vpiTimeVar,             // time variable
+    TimeQueue = sv_bindings::vpiTimeQueue,         // simulation event queue
+    Udp = sv_bindings::vpiUdp,                     // user-defined primitive
+    UdpDefn = sv_bindings::vpiUdpDefn,             // UDP definition
+    UserSystf = sv_bindings::vpiUserSystf,         // user-defined system task/function
+    VarSelect = sv_bindings::vpiVarSelect,         // variable array selection
+    Wait = sv_bindings::vpiWait,                   // wait statement
+    While = sv_bindings::vpiWhile,                 // while statement
 
     // Object types added with 1364-2001
-    Attribute,            // attribute of an object
-    BitSelect,            // Bit-select of parameter, var select
-    Callback,             // callback object
-    DelayTerm,            // Delay term which is a load or driver
-    DelayDevice,          // Delay object within a net
-    Frame,                // reentrant task/func frame
-    GateArray,            // gate instance array
-    ModuleArray,          // module instance array
-    PrimitiveArray,       // vpiprimitiveArray type
-    NetArray,             // multidimensional net
-    Range,                // range declaration
-    RegArray,             // multidimensional reg
-    SwitchArray,          // switch instance array
-    UdpArray,             // UDP instance array
-    ContAssignBit,        // Bit of a vector continuous assignment
-    NamedEventArray,      // multidimensional named event
+    Attribute = sv_bindings::vpiAttribute,              // attribute of an object
+    BitSelect = sv_bindings::vpiBitSelect,              // Bit-select of parameter, var select
+    Callback = sv_bindings::vpiCallback,                // callback object
+    DelayTerm = sv_bindings::vpiDelayTerm,              // Delay term which is a load or driver
+    DelayDevice = sv_bindings::vpiDelayDevice,          // Delay object within a net
+    Frame = sv_bindings::vpiFrame,                      // reentrant task/func frame
+    GateArray = sv_bindings::vpiGateArray,              // gate instance array
+    ModuleArray = sv_bindings::vpiModuleArray,          // module instance array
+    PrimitiveArray = sv_bindings::vpiPrimitiveArray,    // vpiprimitiveArray type
+    NetArray = sv_bindings::vpiNetArray,                // multidimensional net
+    Range = sv_bindings::vpiRange,                      // range declaration
+    RegArray = sv_bindings::vpiRegArray,                // multidimensional reg
+    SwitchArray = sv_bindings::vpiSwitchArray,          // switch instance array
+    UdpArray = sv_bindings::vpiUdpArray,                // UDP instance array
+    ContAssignBit = sv_bindings::vpiContAssignBit,      // Bit of a vector continuous assignment
+    NamedEventArray = sv_bindings::vpiNamedEventArray,  // multidimensional named event
 
     // Object types added with 1364-2005
-    IndexedPartSelect,    // Indexed part-select object
-    GenScopeArray,        // array of generated scopes
-    GenScope,             // A generated scope
-    GenVar,               // Object used to instantiate gen scopes
+    IndexedPartSelect = sv_bindings::vpiIndexedPartSelect,  // Indexed part-select object
+    GenScopeArray = sv_bindings::vpiGenScopeArray,          // array of generated scopes
+    GenScope = sv_bindings::vpiGenScope,                    // A generated scope
+    GenVar = sv_bindings::vpiGenVar,                        // Object used to instantiate gen scopes
 }
 
 /* ------------------------------------------------------------------------------------------------
  * Associated Functions and Methods
  * --------------------------------------------------------------------------------------------- */
 
-//TODO
+impl ObjectIterator {
+    fn new(object_type: ObjectType) -> ObjectIterator {
+        ObjectIterator {
+            object_type: object_type,
+            //FIXME justify safety
+            iterator_handle: Some(VpiHandle { handle: unsafe { sv_bindings::vpi_iterate(object_type as i32, std::ptr::null_mut()) } })
+        }
+    }
+
+    fn new_with_reference(object_type: ObjectType, reference: &mut VpiHandle) -> ObjectIterator {
+        //FIXME justify safety
+        let raw_handle = unsafe { sv_bindings::vpi_iterate(object_type as i32, reference.handle) };
+
+        //TODO actually why not allow null handles?
+        let iterator_handle = if raw_handle.is_null() {
+            None
+        } else {
+            Some(VpiHandle { handle: raw_handle })
+        };
+
+        ObjectIterator {
+            object_type: object_type,
+            iterator_handle: iterator_handle
+        }
+    }
+}
 
 /* ------------------------------------------------------------------------------------------------
  * Traits And Default Implementations
@@ -180,7 +235,7 @@ enum ObjectType {
 
 impl Drop for VpiHandle {
     fn drop(&mut self) {
-        if let Some(handle) = self.handle {
+        if !self.handle.is_null() {
             //FIXME test this on a simulator that supports it
             /*
             unsafe {
@@ -188,6 +243,27 @@ impl Drop for VpiHandle {
                 sv_bindings::vpi_release_handle(handle);
             }
             */
+            self.handle = std::ptr::null_mut();
+        }
+    }
+}
+
+impl Iterator for ObjectIterator {
+    type Item = VpiHandle;
+
+    fn next(&mut self) -> Option<VpiHandle> {
+        let unwrapped_iterator_handle = self.iterator_handle.as_mut()?;
+
+        //FIXME justify safety
+        let raw_handle_from_scan = unsafe {
+            sv_bindings::vpi_scan(unwrapped_iterator_handle.handle)
+        };
+
+        if raw_handle_from_scan.is_null() {
+            self.iterator_handle = None;//Iterator handle is now invalid
+            None
+        } else {
+            Some(VpiHandle { handle: raw_handle_from_scan })
         }
     }
 }
@@ -196,49 +272,23 @@ impl Drop for VpiHandle {
  * Functions
  * --------------------------------------------------------------------------------------------- */
 
-fn register_startup_routines() {
-    //TODO
-}
-
-extern "C" fn start_of_sim_callback(callback_data_ptr: *mut sv_bindings::t_cb_data) -> sv_bindings::PLI_INT32 {
-    sv_println!("Start of simulation!");
-    let iterate_handle = vpi_get_top_module_iterate_handle();
-    sv_println!("Iterate handle dbg: {:?}", iterate_handle);
-
-    let scan_handle = unsafe {
-        sv_bindings::vpi_scan(
-            iterate_handle.handle.unwrap()
-        )
-    };
-    sv_println!("Scan handle dbg: {:?}", scan_handle);
-
-    //TESTING
+//TESTING
+vlog_startup_routines!(test123);
+fn test123() {
+    sv_println!("Hello World!");
     unsafe {
-        //Why is this null? There is a module...
-        let top_module_handle = sv_bindings::vpi_handle(
-            sv_bindings::vpiModule as i32,
-            scan_handle
+        START_OF_SIM_CALLBACK_DATA.time = &mut VPI_TIME;//To overcome :(
+        sv_bindings::vpi_register_cb(
+            &mut START_OF_SIM_CALLBACK_DATA
         );
-        sv_println!("Top module handle dbg: {:?}", top_module_handle);
-
-        //Get the name
-        let name = std::ffi::CStr::from_ptr(sv_bindings::vpi_get_str(
-            sv_bindings::vpiName as i32,
-            top_module_handle
-        )).to_string_lossy().into_owned();
-        sv_println!("Top module name: {}", name);
     }
-
-    0
 }
-
 static mut VPI_TIME: sv_bindings::t_vpi_time = sv_bindings::t_vpi_time {
     type_: sv_bindings::vpiSimTime as i32,
     low: 1,
     high: 2,
     real: 0.0,
 };
-
 static mut START_OF_SIM_CALLBACK_DATA: sv_bindings::t_cb_data = sv_bindings::t_cb_data {
     reason: sv_bindings::cbAtStartOfSimTime as i32,
     cb_rtn: Some(start_of_sim_callback),
@@ -249,36 +299,38 @@ static mut START_OF_SIM_CALLBACK_DATA: sv_bindings::t_cb_data = sv_bindings::t_c
     index: 0,
     user_data: std::ptr::null_mut()
 };
+extern "C" fn start_of_sim_callback(callback_data_ptr: *mut sv_bindings::t_cb_data) -> sv_bindings::PLI_INT32 {
+    sv_println!("In start_of_sim_callback");
+    for mut module_handle in ObjectIterator::new(ObjectType::Module) {
 
-pub extern "C" fn call_startup_routines() {
-    sv_println!("Hello SystemVerilog from Rust 123!");
+        //Get the name
+        let name = unsafe { std::ffi::CStr::from_ptr(sv_bindings::vpi_get_str(
+            sv_bindings::vpiName as i32,
+            module_handle.handle
+        )) }.to_string_lossy().into_owned();
+        sv_println!("Module \"{}\" discovered, handle: {:?}.", name, module_handle);
 
-    //FIXME test this on a simulator that supports it
-    //sv_println!("DPI Version: {}", sv_dpi_version_string());
+        sv_println!("Let's see if it contains any modules (only one level deep):");
+        for submodule_handle in ObjectIterator::new_with_reference(ObjectType::Module, &mut module_handle) {
+            let name = unsafe { std::ffi::CStr::from_ptr(sv_bindings::vpi_get_str(
+                sv_bindings::vpiName as i32,
+                submodule_handle.handle
+            )) }.to_string_lossy().into_owned();
+            sv_println!("  Module \"{}\" discovered, handle: {:?}.", name, submodule_handle);
+        }
 
-    //Haha, I got an error since we can't do vpi_iterate before startup routines have finished
-    //let top_module_handle = vpi_get_top_module_handle();
-
-    //Let's try it in this function instead:
-    unsafe {
-        START_OF_SIM_CALLBACK_DATA.time = &mut VPI_TIME;//To overcome :(
-        sv_bindings::vpi_register_cb(
-            &mut START_OF_SIM_CALLBACK_DATA
-        );
+        sv_println!("Let's see if it contains any registers (only one level deep):");
+        for net_handle in ObjectIterator::new_with_reference(ObjectType::Reg, &mut module_handle) {
+            let name = unsafe { std::ffi::CStr::from_ptr(sv_bindings::vpi_get_str(
+                sv_bindings::vpiName as i32,
+                net_handle.handle
+            )) }.to_string_lossy().into_owned();
+            sv_println!("  Net \"{}\" discovered, handle: {:?}.", name, net_handle);
+        }
     }
+    0
 }
-
-fn vpi_get_top_module_iterate_handle() -> VpiHandle {
-    let handle = unsafe {
-        sv_bindings::vpi_iterate(
-            sv_bindings::vpiModule as i32,
-            std::ptr::null_mut()
-        )
-    };
-    VpiHandle {
-        handle: Some(handle),
-    }
-}
+//End of TESTING
 
 fn sv_dpi_version_string() -> String {
     sv_dpi_version_cstring().to_string_lossy().into_owned()
@@ -302,21 +354,6 @@ fn vpi_print_cstr(cstr: &std::ffi::CStr) {
         sv_bindings::vpi_printf(cstr.as_ptr() as *mut sv_bindings::PLI_BYTE8);
     }
 }
-
-//TESTING
-/*
-#[no_mangle]
-pub static vlog_startup_routines: [Option<unsafe extern "C" fn()>; 2usize] = [Some(testing123_c), None];
-pub fn testing123() {
-    const TEST: &[u8] = b"Hi SystemVerilog From Rust!\n\0";
-    unsafe {
-        sv_bindings::vpi_printf(TEST.as_ptr() as *mut i8);
-    }
-}
-pub extern "C" fn testing123_c() {
-    testing123();
-}
-*/
 
 /* ------------------------------------------------------------------------------------------------
  * Tests

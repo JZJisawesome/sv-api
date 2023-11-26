@@ -3,6 +3,6 @@ module hello();
 endmodule
 
 module top();
-    wire a;
+    reg a;
     hello h();
 endmodule
