@@ -93,10 +93,9 @@ static INIT_FINISHED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
  * --------------------------------------------------------------------------------------------- */
 
 #[derive(Debug)]
-//#[repr(transparent)]
+#[repr(transparent)]
 pub struct ObjectHandle {
-    //FIXME disallow null handles
-    handle: sv_bindings::vpiHandle,
+    handle: std::ptr::NonNull<sv_bindings::PLI_UINT32>//<sv_bindings::vpiHandle>//We don't want a pointer to a pointer
 }
 
 #[derive(Debug)]
@@ -233,22 +232,29 @@ pub struct SimulatorInfo<'a> {
 
 impl ObjectIterator {
     fn new(object_type: ObjectType) -> ObjectIterator {
+        //FIXME justify safety
+        let raw_handle = unsafe { sv_bindings::vpi_iterate(object_type as i32, std::ptr::null_mut()) };
+
+        let iterator_handle = if raw_handle.is_null() {
+            None
+        } else {
+            Some(ObjectHandle { handle: std::ptr::NonNull::new(raw_handle).unwrap() })
+        };
+
         ObjectIterator {
             object_type: object_type,
-            //FIXME justify safety
-            iterator_handle: Some(ObjectHandle { handle: unsafe { sv_bindings::vpi_iterate(object_type as i32, std::ptr::null_mut()) } })
+            iterator_handle: iterator_handle
         }
     }
 
     fn new_with_reference(object_type: ObjectType, reference: &mut ObjectHandle) -> ObjectIterator {
         //FIXME justify safety
-        let raw_handle = unsafe { sv_bindings::vpi_iterate(object_type as i32, reference.handle) };
+        let raw_handle = unsafe { sv_bindings::vpi_iterate(object_type as i32, reference.handle.as_ptr()) };
 
-        //TODO actually why not allow null handles?
         let iterator_handle = if raw_handle.is_null() {
             None
         } else {
-            Some(ObjectHandle { handle: raw_handle })
+            Some(ObjectHandle { handle: std::ptr::NonNull::new(raw_handle).unwrap() })
         };
 
         ObjectIterator {
@@ -270,16 +276,14 @@ impl ObjectIterator {
 
 impl Drop for ObjectHandle {
     fn drop(&mut self) {
-        if !self.handle.is_null() {
-            //FIXME test this on a simulator that supports it
-            /*
-            unsafe {
-                //FIXME justify safety
-                sv_bindings::vpi_release_handle(handle);
-            }
-            */
-            self.handle = std::ptr::null_mut();
+        //Guaranteed the handle is not null (it is a NonNull)
+        //FIXME test this on a simulator that supports it
+        /*
+        unsafe {
+            //FIXME justify safety
+            sv_bindings::vpi_release_handle(handle.as_ptr());
         }
+        */
     }
 }
 
@@ -291,14 +295,14 @@ impl Iterator for ObjectIterator {
 
         //FIXME justify safety
         let raw_handle_from_scan = unsafe {
-            sv_bindings::vpi_scan(unwrapped_iterator_handle.handle)
+            sv_bindings::vpi_scan(unwrapped_iterator_handle.handle.as_ptr())
         };
 
         if raw_handle_from_scan.is_null() {
             self.iterator_handle = None;//Iterator handle is now invalid (this drops it)
             None
         } else {
-            Some(ObjectHandle { handle: raw_handle_from_scan })
+            Some(ObjectHandle { handle: std::ptr::NonNull::new(raw_handle_from_scan).unwrap() })
         }
     }
 }
@@ -378,7 +382,7 @@ extern "C" fn start_of_sim_callback(callback_data_ptr: *mut sv_bindings::t_cb_da
         //Get the name
         let name = unsafe { std::ffi::CStr::from_ptr(sv_bindings::vpi_get_str(
             sv_bindings::vpiName as i32,
-            module_handle.handle
+            module_handle.handle.as_ptr()
         )) }.to_string_lossy().into_owned();
         sv_println!("Module \"{}\" discovered, handle: {:?}.", name, module_handle);
 
@@ -386,7 +390,7 @@ extern "C" fn start_of_sim_callback(callback_data_ptr: *mut sv_bindings::t_cb_da
         for submodule_handle in ObjectIterator::new_with_reference(ObjectType::Module, &mut module_handle) {
             let name = unsafe { std::ffi::CStr::from_ptr(sv_bindings::vpi_get_str(
                 sv_bindings::vpiName as i32,
-                submodule_handle.handle
+                submodule_handle.handle.as_ptr()
             )) }.to_string_lossy().into_owned();
             sv_println!("  Module \"{}\" discovered, handle: {:?}.", name, submodule_handle);
         }
@@ -395,7 +399,7 @@ extern "C" fn start_of_sim_callback(callback_data_ptr: *mut sv_bindings::t_cb_da
         for net_handle in ObjectIterator::new_with_reference(ObjectType::Reg, &mut module_handle) {
             let name = unsafe { std::ffi::CStr::from_ptr(sv_bindings::vpi_get_str(
                 sv_bindings::vpiName as i32,
-                net_handle.handle
+                net_handle.handle.as_ptr()
             )) }.to_string_lossy().into_owned();
             sv_println!("  Net \"{}\" discovered, handle: {:?}.", name, net_handle);
         }
