@@ -47,9 +47,15 @@ macro_rules! vlog_startup_routines {
     ($($arg:ident),*) => {//TODO support closures, functions in another module or part of a trait (with::), etc
         mod __svapi_vlog_startup_routines {
             extern "C" fn __svapi_call_vlog_startup_routines() {
+                //startup_routines_started();
+                //::svapi::startup_routines_started();
+                crate::startup_routines_started();
                 $(
                     super::$arg();
                 )*
+                //::svapi::startup_routines_finished();
+                //startup_routines_finished();
+                crate::startup_routines_finished();
             }
 
             //SAFETY: We must end vlog_startup_routines with a null pointer, so we do so with None
@@ -76,21 +82,38 @@ macro_rules! vlog_startup_routines {
  * Static Variables
  * --------------------------------------------------------------------------------------------- */
 
-//TODO
+static INIT_STARTED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+static INIT_FINISHED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
 
 /* ------------------------------------------------------------------------------------------------
  * Types
  * --------------------------------------------------------------------------------------------- */
 
 #[derive(Debug)]
-struct VpiHandle {
+pub struct ObjectHandle {
     handle: sv_bindings::vpiHandle,
 }
 
 #[derive(Debug)]
-struct ObjectIterator {
+pub struct ObjectIterator {
     object_type: ObjectType,
-    iterator_handle: Option<VpiHandle>,
+    iterator_handle: Option<ObjectHandle>,
+}
+
+
+#[derive(Clone, Copy, Debug)]
+pub enum Time {
+    ScaledRealTime(f64),
+    SimTime{high: u32, low: u32},
+    SuppressTime
+}
+
+#[derive(Clone, Copy, Debug)]
+#[repr(i32)]
+pub enum TimeType {
+    ScaledRealTime = sv_bindings::vpiScaledRealTime,
+    SimTime = sv_bindings::vpiSimTime,
+    SuppressTime = sv_bindings::vpiSuppressTime,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -201,11 +224,11 @@ impl ObjectIterator {
         ObjectIterator {
             object_type: object_type,
             //FIXME justify safety
-            iterator_handle: Some(VpiHandle { handle: unsafe { sv_bindings::vpi_iterate(object_type as i32, std::ptr::null_mut()) } })
+            iterator_handle: Some(ObjectHandle { handle: unsafe { sv_bindings::vpi_iterate(object_type as i32, std::ptr::null_mut()) } })
         }
     }
 
-    fn new_with_reference(object_type: ObjectType, reference: &mut VpiHandle) -> ObjectIterator {
+    fn new_with_reference(object_type: ObjectType, reference: &mut ObjectHandle) -> ObjectIterator {
         //FIXME justify safety
         let raw_handle = unsafe { sv_bindings::vpi_iterate(object_type as i32, reference.handle) };
 
@@ -213,7 +236,7 @@ impl ObjectIterator {
         let iterator_handle = if raw_handle.is_null() {
             None
         } else {
-            Some(VpiHandle { handle: raw_handle })
+            Some(ObjectHandle { handle: raw_handle })
         };
 
         ObjectIterator {
@@ -233,7 +256,7 @@ impl ObjectIterator {
  * Trait Implementations
  * --------------------------------------------------------------------------------------------- */
 
-impl Drop for VpiHandle {
+impl Drop for ObjectHandle {
     fn drop(&mut self) {
         if !self.handle.is_null() {
             //FIXME test this on a simulator that supports it
@@ -249,9 +272,9 @@ impl Drop for VpiHandle {
 }
 
 impl Iterator for ObjectIterator {
-    type Item = VpiHandle;
+    type Item = ObjectHandle;
 
-    fn next(&mut self) -> Option<VpiHandle> {
+    fn next(&mut self) -> Option<ObjectHandle> {
         let unwrapped_iterator_handle = self.iterator_handle.as_mut()?;
 
         //FIXME justify safety
@@ -260,10 +283,35 @@ impl Iterator for ObjectIterator {
         };
 
         if raw_handle_from_scan.is_null() {
-            self.iterator_handle = None;//Iterator handle is now invalid
+            self.iterator_handle = None;//Iterator handle is now invalid (this drops it)
             None
         } else {
-            Some(VpiHandle { handle: raw_handle_from_scan })
+            Some(ObjectHandle { handle: raw_handle_from_scan })
+        }
+    }
+}
+
+impl From<Time> for sv_bindings::t_vpi_time {
+    fn from(time: Time) -> sv_bindings::t_vpi_time {
+        match time {
+            Time::ScaledRealTime(real) => sv_bindings::t_vpi_time {
+                type_: TimeType::ScaledRealTime as i32,
+                low: 0,
+                high: 0,
+                real: real
+            },
+            Time::SimTime{high, low} => sv_bindings::t_vpi_time {
+                type_: TimeType::SimTime as i32,
+                low: low,
+                high: high,
+                real: 0.0
+            },
+            Time::SuppressTime => sv_bindings::t_vpi_time {
+                type_: TimeType::SuppressTime as i32,
+                low: 0,
+                high: 0,
+                real: 0.0
+            }
         }
     }
 }
@@ -275,20 +323,32 @@ impl Iterator for ObjectIterator {
 //TESTING
 vlog_startup_routines!(test123);
 fn test123() {
-    sv_println!("Hello World!");
+    //sv_println!("Hello World!");//Illegal to do this
     unsafe {
-        START_OF_SIM_CALLBACK_DATA.time = &mut VPI_TIME;//To overcome :(
+        //START_OF_SIM_CALLBACK_DATA.time = &mut VPI_TIME;//To overcome :(
+
+        //TODO add a callback wrapper to clean up the struct at the end/give it back to user code
+        //(basically consume the box and pass the whole boxed START_OF_SIM_CALLBACK_DATA to the user
+        //after removing the box to avoid memleaks)
+        let time = Time::SimTime{high: 1, low: 2};
+        let ctime: sv_bindings::t_vpi_time = time.into();
+        let ctimebox = Box::new(ctime);
+        START_OF_SIM_CALLBACK_DATA.time = Box::into_raw(ctimebox);
+
+        //TODO in the wrapper around the registration callback panic if SupressTime or Time is NULL
         sv_bindings::vpi_register_cb(
             &mut START_OF_SIM_CALLBACK_DATA
         );
     }
 }
+/*
 static mut VPI_TIME: sv_bindings::t_vpi_time = sv_bindings::t_vpi_time {
     type_: sv_bindings::vpiSimTime as i32,
     low: 1,
     high: 2,
     real: 0.0,
 };
+*/
 static mut START_OF_SIM_CALLBACK_DATA: sv_bindings::t_cb_data = sv_bindings::t_cb_data {
     reason: sv_bindings::cbAtStartOfSimTime as i32,
     cb_rtn: Some(start_of_sim_callback),
@@ -332,23 +392,34 @@ extern "C" fn start_of_sim_callback(callback_data_ptr: *mut sv_bindings::t_cb_da
 }
 //End of TESTING
 
-fn sv_dpi_version_string() -> String {
+pub fn startup_routines_started() {//Should only be called by the vlog_startup_routines! macro
+    INIT_STARTED.set(()).expect("startup_routines_started() was called manually!");
+}
+
+pub fn startup_routines_finished() {//Should only be called by the vlog_startup_routines! macro
+    INIT_FINISHED.set(()).expect("startup_routines_finished() was called manually!");
+}
+
+pub fn sv_dpi_version_string() -> String {
     sv_dpi_version_cstring().to_string_lossy().into_owned()
 }
 
-fn sv_dpi_version_cstring() -> &'static std::ffi::CStr {
+pub fn sv_dpi_version_cstring() -> &'static std::ffi::CStr {
+    INIT_FINISHED.get().expect("Attempt to get DPI version during a startup routine!");
     unsafe {
         //FIXME is the string pointer guaranteed to always be valid (or should we make a copy)?
         std::ffi::CStr::from_ptr(sv_bindings::svDpiVersion())
     }
 }
 
-fn vpi_print_str(string: &str) {
+pub fn vpi_print_str(string: &str) {
+    INIT_FINISHED.get().expect("Attempt to print using the VPI during a startup routine!");
     let cstr = std::ffi::CString::new(string).unwrap();
     vpi_print_cstr(&cstr);
 }
 
-fn vpi_print_cstr(cstr: &std::ffi::CStr) {
+pub fn vpi_print_cstr(cstr: &std::ffi::CStr) {
+    INIT_FINISHED.get().expect("Attempt to print using the VPI during a startup routine!");
     unsafe {
         //Safety: It is safe to cast to *mut PLI_BYTE8 because vpi_printf does not modify the string
         sv_bindings::vpi_printf(cstr.as_ptr() as *mut sv_bindings::PLI_BYTE8);
