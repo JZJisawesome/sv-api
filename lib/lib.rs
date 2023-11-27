@@ -29,12 +29,14 @@
  * Macros
  * --------------------------------------------------------------------------------------------- */
 
+#[macro_export]
 macro_rules! sv_print {
     ($($arg:tt)*) => {
         vpi_print_str(&format!($($arg)*));
     };
 }
 
+#[macro_export]
 macro_rules! sv_println {
     ($($arg:tt)*) => {
         sv_print!($($arg)*);
@@ -42,6 +44,7 @@ macro_rules! sv_println {
     };
 }
 
+#[macro_export]
 macro_rules! vlog_startup_routines {
     //($($arg:tt),*) => {
     ($($arg:ident),*) => {//TODO support closures, functions in another module or part of a trait (with::), etc
@@ -52,15 +55,13 @@ macro_rules! vlog_startup_routines {
                     super::$arg();
                 )*
 
-                //::svapi::startup_routines_finished();
-                //startup_routines_finished();
                 //SAFETY: This is the only place we allow this function to be called without
                 //warning that the caller would violate safety by doing so.
                 //This function allows the other dpi/pli/vpi abstraction functions to be called
                 //without panicing, so it must be called in order for user code to be able to
                 //use those functions. Those functions can only be used AFTER the startup routines
                 //have finished, so we only call this function after the above.
-                unsafe { crate::startup_routines_finished(); }
+                unsafe { ::sv_api::startup_routines_finished(); }
             }
 
             //SAFETY: We must end vlog_startup_routines with a null pointer, so we do so with None
@@ -335,6 +336,7 @@ impl From<Time> for sv_bindings::t_vpi_time {
  * --------------------------------------------------------------------------------------------- */
 
 //TESTING
+/*
 vlog_startup_routines!(test123);
 fn test123() {
     //sv_println!("Hello World!");//Illegal to do this
@@ -355,14 +357,12 @@ fn test123() {
         );
     }
 }
-/*
 static mut VPI_TIME: sv_bindings::t_vpi_time = sv_bindings::t_vpi_time {
     type_: sv_bindings::vpiSimTime as i32,
     low: 1,
     high: 2,
     real: 0.0,
 };
-*/
 static mut START_OF_SIM_CALLBACK_DATA: sv_bindings::t_cb_data = sv_bindings::t_cb_data {
     reason: sv_bindings::cbAtStartOfSimTime as i32,
     cb_rtn: Some(start_of_sim_callback),
@@ -405,6 +405,7 @@ extern "C" fn start_of_sim_callback(callback_data_ptr: *mut sv_bindings::t_cb_da
     sv_println!("Simulator info: {:?}", get_simulator_info());
     0
 }
+*/
 //End of TESTING
 
 //Should only be called by the vlog_startup_routines! macro, any other use is undefined behaviour

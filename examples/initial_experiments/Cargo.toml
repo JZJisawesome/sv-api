@@ -1,0 +1,14 @@
+[package]
+name = "initial_experiments"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["cdylib"]
+name = "initial_experiments"
+path = "lib/lib.rs"
+
+[dependencies]
+sv-api = { path = "../.." }

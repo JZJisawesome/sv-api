@@ -24,13 +24,8 @@ sv-bindings = { path = "../sv-bindings" }
 #nightly-features-benches = []
 
 [lib]
-crate-type = ["cdylib"]
 name = "sv_api"
 path = "lib/lib.rs"
-
-[[bin]]
-name = "testing"
-path = "src/testing.rs"
 
 [profile.dev]
 incremental = true
