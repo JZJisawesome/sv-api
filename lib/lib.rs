@@ -228,7 +228,7 @@ pub struct SimulatorInfo<'a> {
 }
 
 pub struct CallbackBuilder {
-    func: Option<extern "C" fn(*mut sv_bindings::t_cb_data) -> i32>,
+    func: Option<Box<dyn FnMut()>>
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -275,20 +275,43 @@ impl CallbackBuilder {
     }
 
     //TODO make this a rust fn
-    pub fn with_function(mut self, func: extern "C" fn(*mut sv_bindings::t_cb_data) -> i32) -> CallbackBuilder {
-        self.func = Some(func);
+    pub fn with_function(mut self, func: impl FnMut() + 'static) -> CallbackBuilder {
+        self.func = Some(Box::new(func));
         self
     }
 
-    pub fn register(self) {
+    extern "C" fn closure_wrapper(cb_data: *mut sv_bindings::t_cb_data) -> i32 {
+        //TODO justify safety
+        unsafe {
+            //https://users.rust-lang.org/t/why-cant-a-convert-a-mut-c-void-into-mut-dyn-std-read/95780/7
+            //TODO try to make this more efficient in the future
+            let thin_ptr: *mut *mut dyn FnMut() = (*cb_data).user_data.cast();
+            let fat_ptr: *mut dyn FnMut() = *thin_ptr;
+            (*fat_ptr)();//TODO pass the closure extra info about what happened
+            //No need to re-box things since the closure may be re-called multiple times and we
+            //don't want to drop it
+        };
+
+        0
+    }
+
+    pub fn register(mut self) {
         //TESTING
         unsafe {
-            assert!(self.func.is_some());
-            START_OF_SIM_CALLBACK_DATA.cb_rtn = Some(self.func.unwrap());
+            START_OF_SIM_CALLBACK_DATA.cb_rtn = Some(CallbackBuilder::closure_wrapper);//Some(self.func.unwrap());
             let time = Time::SimTime{high: 1, low: 2};
             let ctime: sv_bindings::t_vpi_time = time.into();
             let ctimebox = Box::new(ctime);
             START_OF_SIM_CALLBACK_DATA.time = Box::into_raw(ctimebox);
+
+            assert!(self.func.is_some());
+            let boxed_closure = self.func.take().unwrap();
+            //https://users.rust-lang.org/t/why-cant-a-convert-a-mut-c-void-into-mut-dyn-std-read/95780/7
+            //TODO try to make this more efficient in the future
+            let fat_ptr: *mut dyn FnMut() = Box::into_raw(boxed_closure);
+            let boxed_fat_ptr = Box::new(fat_ptr);
+            let thin_ptr: *mut *mut dyn FnMut() = Box::into_raw(boxed_fat_ptr);
+            START_OF_SIM_CALLBACK_DATA.user_data = thin_ptr.cast();
 
             //TODO in the wrapper around the registration callback panic if SupressTime or Time is NULL
             sv_bindings::vpi_register_cb(

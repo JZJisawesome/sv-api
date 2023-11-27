@@ -83,12 +83,10 @@ fn setup_callback() {
         .register();
 }
 
-//fn start_of_simulation_callback() {
-extern "C" fn start_of_simulation_callback(_: *mut sv_bindings::t_cb_data) -> i32 {
+fn start_of_simulation_callback() {
     sim_println!("Now we can do more stuff!");
     dbg!(get_simulator_info());
     //TODO
-    0
 }
 
 /* ------------------------------------------------------------------------------------------------

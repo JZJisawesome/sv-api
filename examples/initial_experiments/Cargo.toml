@@ -11,5 +11,4 @@ name = "initial_experiments"
 path = "lib/lib.rs"
 
 [dependencies]
-sv-bindings = { path = "../../../sv-bindings" }
 sv-api = { path = "../.." }
