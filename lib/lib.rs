@@ -30,17 +30,17 @@
  * --------------------------------------------------------------------------------------------- */
 
 #[macro_export]
-macro_rules! sv_print {
+macro_rules! sim_print {
     ($($arg:tt)*) => {
         vpi_print_str(&format!($($arg)*));
     };
 }
 
 #[macro_export]
-macro_rules! sv_println {
+macro_rules! sim_println {
     ($($arg:tt)*) => {
-        sv_print!($($arg)*);
-        sv_print!("\n");
+        sim_print!($($arg)*);
+        sim_print!("\n");
     };
 }
 
@@ -227,6 +227,10 @@ pub struct SimulatorInfo<'a> {
     version: &'a str
 }
 
+pub struct CallbackBuilder {
+    func: Option<extern "C" fn(*mut sv_bindings::t_cb_data) -> i32>,
+}
+
 /* ------------------------------------------------------------------------------------------------
  * Associated Functions and Methods
  * --------------------------------------------------------------------------------------------- */
@@ -259,6 +263,38 @@ impl ObjectIterator {
 
         ObjectIterator {
             iterator_handle: iterator_handle
+        }
+    }
+}
+
+impl CallbackBuilder {
+    pub fn new() -> CallbackBuilder {
+        CallbackBuilder {
+            func: None
+        }
+    }
+
+    //TODO make this a rust fn
+    pub fn with_function(mut self, func: extern "C" fn(*mut sv_bindings::t_cb_data) -> i32) -> CallbackBuilder {
+        self.func = Some(func);
+        self
+    }
+
+    pub fn register(self) {
+        //TESTING
+        unsafe {
+            assert!(self.func.is_some());
+            START_OF_SIM_CALLBACK_DATA.cb_rtn = Some(self.func.unwrap());
+            let time = Time::SimTime{high: 1, low: 2};
+            let ctime: sv_bindings::t_vpi_time = time.into();
+            let ctimebox = Box::new(ctime);
+            START_OF_SIM_CALLBACK_DATA.time = Box::into_raw(ctimebox);
+
+            //TODO in the wrapper around the registration callback panic if SupressTime or Time is NULL
+            sv_bindings::vpi_register_cb(
+                &mut START_OF_SIM_CALLBACK_DATA
+            );
+        
         }
     }
 }
@@ -336,10 +372,20 @@ impl From<Time> for sv_bindings::t_vpi_time {
  * --------------------------------------------------------------------------------------------- */
 
 //TESTING
+static mut START_OF_SIM_CALLBACK_DATA: sv_bindings::t_cb_data = sv_bindings::t_cb_data {
+    reason: sv_bindings::cbAtStartOfSimTime as i32,
+    cb_rtn: None,//Some(start_of_sim_callback),
+    obj: std::ptr::null_mut(),
+    time: std::ptr::null_mut(),
+    //time: unsafe { &mut VPI_TIME },//Doesn't work :(
+    value: std::ptr::null_mut(),
+    index: 0,
+    user_data: std::ptr::null_mut()
+};
 /*
 vlog_startup_routines!(test123);
 fn test123() {
-    //sv_println!("Hello World!");//Illegal to do this
+    //sim_println!("Hello World!");//Illegal to do this
     unsafe {
         //START_OF_SIM_CALLBACK_DATA.time = &mut VPI_TIME;//To overcome :(
 
@@ -363,18 +409,8 @@ static mut VPI_TIME: sv_bindings::t_vpi_time = sv_bindings::t_vpi_time {
     high: 2,
     real: 0.0,
 };
-static mut START_OF_SIM_CALLBACK_DATA: sv_bindings::t_cb_data = sv_bindings::t_cb_data {
-    reason: sv_bindings::cbAtStartOfSimTime as i32,
-    cb_rtn: Some(start_of_sim_callback),
-    obj: std::ptr::null_mut(),
-    time: std::ptr::null_mut(),
-    //time: unsafe { &mut VPI_TIME },//Doesn't work :(
-    value: std::ptr::null_mut(),
-    index: 0,
-    user_data: std::ptr::null_mut()
-};
 extern "C" fn start_of_sim_callback(callback_data_ptr: *mut sv_bindings::t_cb_data) -> sv_bindings::PLI_INT32 {
-    sv_println!("In start_of_sim_callback");
+    sim_println!("In start_of_sim_callback");
     for mut module_handle in ObjectIterator::new(ObjectType::Module) {
 
         //Get the name
@@ -382,27 +418,27 @@ extern "C" fn start_of_sim_callback(callback_data_ptr: *mut sv_bindings::t_cb_da
             sv_bindings::vpiName as i32,
             module_handle.handle.as_ptr()
         )) }.to_string_lossy().into_owned();
-        sv_println!("Module \"{}\" discovered, handle: {:?}.", name, module_handle);
+        sim_println!("Module \"{}\" discovered, handle: {:?}.", name, module_handle);
 
-        sv_println!("Let's see if it contains any modules (only one level deep):");
+        sim_println!("Let's see if it contains any modules (only one level deep):");
         for submodule_handle in ObjectIterator::new_with_reference(ObjectType::Module, &mut module_handle) {
             let name = unsafe { std::ffi::CStr::from_ptr(sv_bindings::vpi_get_str(
                 sv_bindings::vpiName as i32,
                 submodule_handle.handle.as_ptr()
             )) }.to_string_lossy().into_owned();
-            sv_println!("  Module \"{}\" discovered, handle: {:?}.", name, submodule_handle);
+            sim_println!("  Module \"{}\" discovered, handle: {:?}.", name, submodule_handle);
         }
 
-        sv_println!("Let's see if it contains any registers (only one level deep):");
+        sim_println!("Let's see if it contains any registers (only one level deep):");
         for net_handle in ObjectIterator::new_with_reference(ObjectType::Reg, &mut module_handle) {
             let name = unsafe { std::ffi::CStr::from_ptr(sv_bindings::vpi_get_str(
                 sv_bindings::vpiName as i32,
                 net_handle.handle.as_ptr()
             )) }.to_string_lossy().into_owned();
-            sv_println!("  Net \"{}\" discovered, handle: {:?}.", name, net_handle);
+            sim_println!("  Net \"{}\" discovered, handle: {:?}.", name, net_handle);
         }
     }
-    sv_println!("Simulator info: {:?}", get_simulator_info());
+    sim_println!("Simulator info: {:?}", get_simulator_info());
     0
 }
 */

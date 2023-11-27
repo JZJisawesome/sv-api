@@ -102,6 +102,7 @@ name = "initial_experiments"
 version = "0.1.0"
 dependencies = [
  "sv-api",
+ "sv-bindings",
 ]
 
 [[package]]
