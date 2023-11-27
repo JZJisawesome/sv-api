@@ -45,8 +45,9 @@ macro_rules! sv_println {
 macro_rules! vlog_startup_routines {
     //($($arg:tt),*) => {
     ($($arg:ident),*) => {//TODO support closures, functions in another module or part of a trait (with::), etc
-        mod __svapi_vlog_startup_routines {
-            extern "C" fn __svapi_call_vlog_startup_routines() {
+        #[doc(hidden)]
+        mod __sv_api_vlog_startup_routines {
+            extern "C" fn __sv_api_call_vlog_startup_routines() {
                 $(
                     super::$arg();
                 )*
@@ -68,7 +69,7 @@ macro_rules! vlog_startup_routines {
             #[no_mangle]
             #[used]
             static vlog_startup_routines: [Option<extern "C" fn()>; 2usize] = [
-                Some(__svapi_call_vlog_startup_routines),
+                Some(__sv_api_call_vlog_startup_routines),
                 None
             ];
         }
@@ -95,13 +96,12 @@ static INIT_FINISHED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
 #[derive(Debug)]
 #[repr(transparent)]
 pub struct ObjectHandle {
-    handle: std::ptr::NonNull<sv_bindings::PLI_UINT32>//<sv_bindings::vpiHandle>//We don't want a pointer to a pointer
+    handle: std::ptr::NonNull<sv_bindings::PLI_UINT32>//We don't want a pointer to a pointer
 }
 
 #[derive(Debug)]
 pub struct ObjectIterator {
-    object_type: ObjectType,
-    iterator_handle: Option<ObjectHandle>,
+    iterator_handle: Option<ObjectHandle>
 }
 
 
@@ -242,7 +242,6 @@ impl ObjectIterator {
         };
 
         ObjectIterator {
-            object_type: object_type,
             iterator_handle: iterator_handle
         }
     }
@@ -258,7 +257,6 @@ impl ObjectIterator {
         };
 
         ObjectIterator {
-            object_type: object_type,
             iterator_handle: iterator_handle
         }
     }

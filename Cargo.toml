@@ -1,5 +1,5 @@
 [package]
-name = "svapi"
+name = "sv-api"
 version = "0.1.0"
 description = "Idiomatic Rust abstractions for interfacing with SystemVerilog."
 authors = ["John Zacarias Jekel <john@jekel.ca>"]
@@ -25,7 +25,7 @@ sv-bindings = { path = "../sv-bindings" }
 
 [lib]
 crate-type = ["cdylib"]
-name = "svapi"
+name = "sv_api"
 path = "lib/lib.rs"
 
 [[bin]]
