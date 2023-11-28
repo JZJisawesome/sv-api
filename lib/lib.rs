@@ -18,6 +18,9 @@
  * --------------------------------------------------------------------------------------------- */
 
 pub mod callbacks;
+pub mod info;
+pub mod startup;
+pub mod print;
 
 /* ------------------------------------------------------------------------------------------------
  * Uses
@@ -29,66 +32,19 @@ pub mod callbacks;
  * Macros
  * --------------------------------------------------------------------------------------------- */
 
-#[macro_export]
-macro_rules! sim_print {
-    ($($arg:tt)*) => {
-        vpi_print_str(&format!($($arg)*));
-    };
-}
-
-#[macro_export]
-macro_rules! sim_println {
-    ($($arg:tt)*) => {
-        sim_print!($($arg)*);
-        sim_print!("\n");
-    };
-}
-
-#[macro_export]
-macro_rules! vlog_startup_routines {
-    //($($arg:tt),*) => {
-    ($($arg:ident),*) => {//TODO support closures, functions in another module or part of a trait (with::), etc
-        #[doc(hidden)]
-        mod __sv_api_vlog_startup_routines {
-            extern "C" fn __sv_api_call_vlog_startup_routines() {
-                $(
-                    super::$arg();
-                )*
-
-                //SAFETY: This is the only place we allow this function to be called without
-                //warning that the caller would violate safety by doing so.
-                //This function allows the other dpi/pli/vpi abstraction functions to be called
-                //without panicing, so it must be called in order for user code to be able to
-                //use those functions. Those functions can only be used AFTER the startup routines
-                //have finished, so we only call this function after the above.
-                unsafe { ::sv_api::startup_routines_finished(); }
-            }
-
-            //SAFETY: We must end vlog_startup_routines with a null pointer, so we do so with None
-            //Although there's no unsafe {} here, the simulator which will load the library
-            //and reference this symbol will expect this to be upheld
-            #[no_mangle]
-            #[used]
-            static vlog_startup_routines: [Option<extern "C" fn()>; 2usize] = [
-                Some(__sv_api_call_vlog_startup_routines),
-                None
-            ];
-        }
-    };
-}
+//TODO
 
 /* ------------------------------------------------------------------------------------------------
  * Constants
  * --------------------------------------------------------------------------------------------- */
 
-//#[no_mangle]
-//pub static vlog_startup_routines: [Option<extern "C" fn()>; 2usize] = [Some(call_startup_routines), None];
+//TODO
 
 /* ------------------------------------------------------------------------------------------------
  * Static Variables
  * --------------------------------------------------------------------------------------------- */
 
-static INIT_FINISHED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+//TODO
 
 /* ------------------------------------------------------------------------------------------------
  * Types
@@ -204,19 +160,13 @@ pub enum ObjectType {
     GenVar = sv_bindings::vpiGenVar,                        // Object used to instantiate gen scopes
 }
 
-#[derive(Debug)]
-pub struct SimulatorInfo<'a> {
-    //TODO provide argc and argv 
-    product_name: &'a str,
-    version: &'a str
-}
-
 /* ------------------------------------------------------------------------------------------------
  * Associated Functions and Methods
  * --------------------------------------------------------------------------------------------- */
 
 impl ObjectIterator {
     fn new(object_type: ObjectType) -> ObjectIterator {
+        startup::panic_if_in_startup_routine!();
         //FIXME justify safety
         let raw_handle = unsafe { sv_bindings::vpi_iterate(object_type as i32, std::ptr::null_mut()) };
 
@@ -232,6 +182,7 @@ impl ObjectIterator {
     }
 
     fn new_with_reference(object_type: ObjectType, reference: &mut ObjectHandle) -> ObjectIterator {
+        startup::panic_if_in_startup_routine!();
         //FIXME justify safety
         let raw_handle = unsafe { sv_bindings::vpi_iterate(object_type as i32, reference.handle.as_ptr()) };
 
@@ -367,55 +318,6 @@ extern "C" fn start_of_sim_callback(callback_data_ptr: *mut sv_bindings::t_cb_da
 */
 //End of TESTING
 
-//Should only be called by the vlog_startup_routines! macro, any other use is undefined behaviour
-pub unsafe fn startup_routines_finished() {
-    INIT_FINISHED.set(()).expect("startup_routines_finished() was called manually at some point!");
-}
-
-pub fn get_dpi_version() -> &'static str {
-    INIT_FINISHED.get().expect("Attempt to get DPI version during a startup routine!");
-    unsafe {
-        //FIXME is the string pointer guaranteed to always be valid (or should we make a copy)?
-        std::ffi::CStr::from_ptr(sv_bindings::svDpiVersion())
-    }.to_str().unwrap()
-}
-
-pub fn vpi_print_str(string: &str) {
-    let cstr = std::ffi::CString::new(string).unwrap();
-    vpi_print_cstr(&cstr);
-}
-
-pub fn vpi_print_cstr(cstr: &std::ffi::CStr) {
-    INIT_FINISHED.get().expect("Attempt to print using the VPI during a startup routine!");
-    unsafe {
-        //Safety: It is safe to cast to *mut PLI_BYTE8 because vpi_printf does not modify the string
-        sv_bindings::vpi_printf(cstr.as_ptr() as *mut sv_bindings::PLI_BYTE8);
-    }
-}
-
-//TODO is 'static a correct assumption?
-pub fn get_simulator_info() -> Option<SimulatorInfo<'static>> {
-    INIT_FINISHED.get().expect("Attempt to get simulator info during a startup routine!");
-
-    let mut raw_info = sv_bindings::t_vpi_vlog_info {
-        argc: 0,
-        argv: std::ptr::null_mut(),
-        product: std::ptr::null_mut(),
-        version: std::ptr::null_mut(),
-    };
-    //TODO justify safety
-    unsafe {
-        if sv_bindings::vpi_get_vlog_info(&mut raw_info) != 1 {
-            return None;
-        }
-    }
-    //TODO justify safety
-    //TODO what if a string is null?
-    Some(SimulatorInfo {
-        product_name: unsafe { std::ffi::CStr::from_ptr(raw_info.product) }.to_str().ok()?,
-        version: unsafe { std::ffi::CStr::from_ptr(raw_info.version) }.to_str().ok()?
-    })
-}
 
 /* ------------------------------------------------------------------------------------------------
  * Tests

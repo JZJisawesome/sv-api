@@ -1,6 +1,6 @@
 /*
- * File:    lib.rs
- * Brief:   Example DPI/PLI/VPI shared object module.
+ * File:    info.rs
+ * Brief:   TODO
  *
  * Copyright (C) 2023 John Jekel
  * See the LICENSE file at the root of the project for licensing info.
@@ -23,13 +23,13 @@
  * Uses
  * --------------------------------------------------------------------------------------------- */
 
-use sv_api::*;
+use crate::startup::panic_if_in_startup_routine;
 
 /* ------------------------------------------------------------------------------------------------
  * Macros
  * --------------------------------------------------------------------------------------------- */
 
-vlog_startup_routines!(hello_world, setup_callback);
+//TODO (also pub(crate) use the_macro statements here too)
 
 /* ------------------------------------------------------------------------------------------------
  * Constants
@@ -47,7 +47,12 @@ vlog_startup_routines!(hello_world, setup_callback);
  * Types
  * --------------------------------------------------------------------------------------------- */
 
-//TODO includes "type"-defs, structs, enums, unions, etc
+#[derive(Debug)]
+pub struct SimulatorInfo<'a> {
+    //TODO provide argc and argv 
+    product_name: &'a str,
+    version: &'a str
+}
 
 /* ------------------------------------------------------------------------------------------------
  * Associated Functions and Methods
@@ -71,29 +76,36 @@ vlog_startup_routines!(hello_world, setup_callback);
  * Functions
  * --------------------------------------------------------------------------------------------- */
 
-fn hello_world() {
-    println!("Hello simulator from Rust!");
-    //sim_println!("Hello, world from SystemVerilog!");//Not allowed during a startup routine
+//TODO is 'static a correct assumption?
+pub fn get_simulator_info() -> Option<SimulatorInfo<'static>> {
+    panic_if_in_startup_routine!();
+
+    let mut raw_info = sv_bindings::t_vpi_vlog_info {
+        argc: 0,
+        argv: std::ptr::null_mut(),
+        product: std::ptr::null_mut(),
+        version: std::ptr::null_mut(),
+    };
+    //TODO justify safety
+    unsafe {
+        if sv_bindings::vpi_get_vlog_info(&mut raw_info) != 1 {
+            return None;
+        }
+    }
+    //TODO justify safety
+    //TODO what if a string is null?
+    Some(SimulatorInfo {
+        product_name: unsafe { std::ffi::CStr::from_ptr(raw_info.product) }.to_str().ok()?,
+        version: unsafe { std::ffi::CStr::from_ptr(raw_info.version) }.to_str().ok()?
+    })
 }
 
-fn setup_callback() {
-    let time = callbacks::Time::SimTime{high: 1, low: 2};
-    callbacks::CallbackBuilder::new()
-        .call(start_of_simulation_callback)
-        .register();
-}
-
-fn start_of_simulation_callback() {
-    sim_println!("Now we can do more stuff!");
-
-    use std::fmt::Write;
-    let mut printer = print::SimulatorPrinter::new();
-    let mut lock = printer.lock().unwrap();
-    writeln!(lock, "Multiple writes to the simulator's output...").unwrap();
-    writeln!(lock, "...but we only needed to lock once!").unwrap();
-
-    dbg!(info::get_simulator_info());
-    //TODO
+pub fn get_dpi_version() -> &'static str {
+    panic_if_in_startup_routine!();
+    unsafe {
+        //FIXME is the string pointer guaranteed to always be valid (or should we make a copy)?
+        std::ffi::CStr::from_ptr(sv_bindings::svDpiVersion())
+    }.to_str().unwrap()
 }
 
 /* ------------------------------------------------------------------------------------------------
