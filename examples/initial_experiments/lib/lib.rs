@@ -77,9 +77,9 @@ fn hello_world() {
 }
 
 fn setup_callback() {
-    let time = Time::SimTime{high: 1, low: 2};
-    CallbackBuilder::new()
-        .with_function(start_of_simulation_callback)
+    let time = callbacks::Time::SimTime{high: 1, low: 2};
+    callbacks::CallbackBuilder::new()
+        .call(start_of_simulation_callback)
         .register();
 }
 
