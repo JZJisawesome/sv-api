@@ -2,7 +2,7 @@
  * File:    lib.rs
  * Brief:   TODO
  *
- * Copyright (C) TODO John Jekel
+ * Copyright (C) 2023 John Jekel
  * See the LICENSE file at the root of the project for licensing info.
  *
  * TODO longer description
@@ -18,6 +18,7 @@
  * --------------------------------------------------------------------------------------------- */
 
 pub mod callbacks;
+pub mod info;
 
 /* ------------------------------------------------------------------------------------------------
  * Uses
@@ -32,6 +33,9 @@ pub mod callbacks;
 #[macro_export]
 macro_rules! sim_print {
     ($($arg:tt)*) => {
+        //TODO improve called-during-startup-routine panic message
+
+        //TODO change this to make a SimultorPrintWriter
         vpi_print_str(&format!($($arg)*));
     };
 }
@@ -39,6 +43,8 @@ macro_rules! sim_print {
 #[macro_export]
 macro_rules! sim_println {
     ($($arg:tt)*) => {
+        //TODO improve called-during-startup-routine panic message
+        //TODO change this to make a SimultorPrintWriter
         sim_print!($($arg)*);
         sim_print!("\n");
     };
@@ -49,8 +55,8 @@ macro_rules! vlog_startup_routines {
     //($($arg:tt),*) => {
     ($($arg:ident),*) => {//TODO support closures, functions in another module or part of a trait (with::), etc
         #[doc(hidden)]
-        mod __sv_api_vlog_startup_routines {
-            extern "C" fn __sv_api_call_vlog_startup_routines() {
+        mod ___sv_api_vlog_startup_routines___ {
+            extern "C" fn ___sv_api_call_vlog_startup_routines___() {
                 $(
                     super::$arg();
                 )*
@@ -70,9 +76,25 @@ macro_rules! vlog_startup_routines {
             #[no_mangle]
             #[used]
             static vlog_startup_routines: [Option<extern "C" fn()>; 2usize] = [
-                Some(__sv_api_call_vlog_startup_routines),
+                Some(___sv_api_call_vlog_startup_routines___),
                 None
             ];
+        }
+    };
+}
+
+macro_rules! panic_if_in_startup_routine {
+    () => {
+        //Thanks https://stackoverflow.com/questions/38088067/equivalent-of-func-or-function-in-rust
+        if let Some(_) = INIT_FINISHED.get() {
+            fn ___dummy___() {}
+            fn ___type_name_of___<T>(_: T) -> &'static str {
+                std::any::type_name::<T>()
+            }
+            let ___fn_name___ = ___type_name_of___(___dummy___)
+                .strip_suffix("::___dummy___")
+                .expect("Suffix should exist!");
+            panic!("{}() cannot be called during a startup routine!", ___fn_name___);
         }
     };
 }
@@ -368,25 +390,29 @@ extern "C" fn start_of_sim_callback(callback_data_ptr: *mut sv_bindings::t_cb_da
 //End of TESTING
 
 //Should only be called by the vlog_startup_routines! macro, any other use is undefined behaviour
+#[doc(hidden)]
 pub unsafe fn startup_routines_finished() {
     INIT_FINISHED.set(()).expect("startup_routines_finished() was called manually at some point!");
 }
 
 pub fn get_dpi_version() -> &'static str {
-    INIT_FINISHED.get().expect("Attempt to get DPI version during a startup routine!");
+    panic_if_in_startup_routine!();
     unsafe {
         //FIXME is the string pointer guaranteed to always be valid (or should we make a copy)?
         std::ffi::CStr::from_ptr(sv_bindings::svDpiVersion())
     }.to_str().unwrap()
 }
 
+//TODO change this to make a SimultorPrintWriter
 pub fn vpi_print_str(string: &str) {
+    panic_if_in_startup_routine!();
     let cstr = std::ffi::CString::new(string).unwrap();
     vpi_print_cstr(&cstr);
 }
 
+//TODO change this to make a SimultorPrintWriter
 pub fn vpi_print_cstr(cstr: &std::ffi::CStr) {
-    INIT_FINISHED.get().expect("Attempt to print using the VPI during a startup routine!");
+    panic_if_in_startup_routine!();
     unsafe {
         //Safety: It is safe to cast to *mut PLI_BYTE8 because vpi_printf does not modify the string
         sv_bindings::vpi_printf(cstr.as_ptr() as *mut sv_bindings::PLI_BYTE8);
@@ -395,7 +421,7 @@ pub fn vpi_print_cstr(cstr: &std::ffi::CStr) {
 
 //TODO is 'static a correct assumption?
 pub fn get_simulator_info() -> Option<SimulatorInfo<'static>> {
-    INIT_FINISHED.get().expect("Attempt to get simulator info during a startup routine!");
+    panic_if_in_startup_routine!();
 
     let mut raw_info = sv_bindings::t_vpi_vlog_info {
         argc: 0,
