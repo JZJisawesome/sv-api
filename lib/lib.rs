@@ -233,6 +233,8 @@ impl Iterator for ObjectIterator {
         };
 
         if raw_handle_from_scan.is_null() {
+            //FIXME I actually don't think we should release the iterator handle in this case (scan
+            //being null already takes care of that)
             self.iterator_handle = None;//Iterator handle is now invalid (this drops it)
             None
         } else {

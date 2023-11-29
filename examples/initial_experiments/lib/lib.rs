@@ -77,7 +77,7 @@ fn hello_world() {
 }
 
 fn setup_callback() {
-    let time = callbacks::Time::SimTime{high: 1, low: 2};
+    let time = callbacks::Time::SimTime { high: 1, low: 2 };
     callbacks::CallbackBuilder::new()
         .call(start_of_simulation_callback)
         .register();
@@ -85,17 +85,18 @@ fn setup_callback() {
 
 fn start_of_simulation_callback() {
     sim_println!("Now we can do more stuff!");
-    {
-        use std::fmt::Write as _;
-        let mut printer = print::SimulatorPrinter::new();
-        printer.prelock().unwrap();
-        writeln!(printer, "Multiple writes to the simulator's output...").unwrap();
-        writeln!(printer, "...but we only needed to lock once!").unwrap();
-        //Unlocked at end of scope
-    }
+    use std::fmt::Write as _;
+    let mut printer = print::SimulatorPrinter::new();
+    writeln!(printer, "Multiple writes to the simulator's output...").unwrap();
+    writeln!(printer, "...but done using a Writer!").unwrap();
     sim_println!("Alrighty onto more interesting things!");
 
+    std::thread::spawn(|| {
+        //sim_println!("Hello from a thread!");//This would panic too
+    });
+
     dbg!(info::get_simulator_info());
+
     //TODO
 }
 
