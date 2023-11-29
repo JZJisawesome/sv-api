@@ -76,11 +76,6 @@ pub struct SimulatorPrinter {
     guard: Option<MutexGuard<'static, ()>>
 }
 
-#[derive(Debug)]
-pub struct SimulatorPrinterLock<'a> {
-    sim_printer: &'a mut SimulatorPrinter
-}
-
 /* ------------------------------------------------------------------------------------------------
  * Associated Functions and Methods
  * --------------------------------------------------------------------------------------------- */
@@ -92,13 +87,17 @@ impl SimulatorPrinter {
         }
     }
 
-    pub fn lock(&mut self) -> Result<&mut Self, PoisonError<()>> {
+    pub fn prelock(&mut self) -> Result<(), PoisonError<()>> {//To be more efficient
         self.guard = Some(PRINT_MUTEX.lock().map_err(|_| PoisonError::new(()))?);
-        Ok(self)
+        Ok(())
     }
 
     pub fn unlock(&mut self) {
         self.guard = None;
+    }
+
+    pub fn is_prelocked(&self) -> bool {
+        self.guard.is_some()
     }
 }
 
