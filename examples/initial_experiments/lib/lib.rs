@@ -85,7 +85,14 @@ fn setup_callback() {
 
 fn start_of_simulation_callback() {
     sim_println!("Now we can do more stuff!");
-    dbg!(get_simulator_info());
+
+    use std::fmt::Write;
+    let mut printer = print::SimulatorPrinter::new();
+    let mut lock = printer.lock().unwrap();
+    writeln!(lock, "Multiple writes to the simulator's output...").unwrap();
+    writeln!(lock, "...but we only needed to lock once!").unwrap();
+
+    dbg!(info::get_simulator_info());
     //TODO
 }
 

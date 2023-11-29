@@ -23,7 +23,7 @@
  * Uses
  * --------------------------------------------------------------------------------------------- */
 
-//TODO (includes "use ..." and "extern crate ...")
+use crate::startup::panic_if_in_startup_routine;
 
 /* ------------------------------------------------------------------------------------------------
  * Macros
@@ -47,7 +47,12 @@
  * Types
  * --------------------------------------------------------------------------------------------- */
 
-//TODO includes "type"-defs, structs, enums, unions, etc
+#[derive(Debug)]
+pub struct SimulatorInfo<'a> {
+    //TODO provide argc and argv 
+    product_name: &'a str,
+    version: &'a str
+}
 
 /* ------------------------------------------------------------------------------------------------
  * Associated Functions and Methods
@@ -71,7 +76,37 @@
  * Functions
  * --------------------------------------------------------------------------------------------- */
 
-//TODO
+//TODO is 'static a correct assumption?
+pub fn get_simulator_info() -> Option<SimulatorInfo<'static>> {
+    panic_if_in_startup_routine!();
+
+    let mut raw_info = sv_bindings::t_vpi_vlog_info {
+        argc: 0,
+        argv: std::ptr::null_mut(),
+        product: std::ptr::null_mut(),
+        version: std::ptr::null_mut(),
+    };
+    //TODO justify safety
+    unsafe {
+        if sv_bindings::vpi_get_vlog_info(&mut raw_info) != 1 {
+            return None;
+        }
+    }
+    //TODO justify safety
+    //TODO what if a string is null?
+    Some(SimulatorInfo {
+        product_name: unsafe { std::ffi::CStr::from_ptr(raw_info.product) }.to_str().ok()?,
+        version: unsafe { std::ffi::CStr::from_ptr(raw_info.version) }.to_str().ok()?
+    })
+}
+
+pub fn get_dpi_version() -> &'static str {
+    panic_if_in_startup_routine!();
+    unsafe {
+        //FIXME is the string pointer guaranteed to always be valid (or should we make a copy)?
+        std::ffi::CStr::from_ptr(sv_bindings::svDpiVersion())
+    }.to_str().unwrap()
+}
 
 /* ------------------------------------------------------------------------------------------------
  * Tests
