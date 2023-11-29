@@ -13,11 +13,11 @@
  *
  * Utilities to print to the simulator's standard output.
  *
- * [sim_print!()](crate::sim_print) and [sim_println!()](crate::sim_println) are analogous to the
- * standard [print!()] and [println!()] macros but print to the simulator's standard output instead
+ * [`sim_print!()`](crate::sim_print) and [`sim_println!()`](crate::sim_println) are analogous to the
+ * standard [`print!()`] and [`println!()`] macros but print to the simulator's standard output instead
  * of the regular Rust standard output (though these are often the same).
  *
- * There is also a [SimulatorPrinter] similar to the standard [Stdout](std::io::Stdout) that
+ * There is also a [`SimulatorPrinter`] similar to the standard [`Stdout`](std::io::Stdout) that
  * allows you to amortize the cost of locking the simulator's standard output over multiple print
  * calls (implementing the [Writer](std::fmt::Write) trait).
  *
@@ -42,6 +42,19 @@ use crate::startup::in_startup_routine;
  * Macros
  * --------------------------------------------------------------------------------------------- */
 
+///Prints to the simulator output.
+///
+///This may or not be the same as printing to the regular Rust standard output.
+///It is preferable if you want, for example, ensure you are logging to the same log file that the
+///simulator itself is writing to.
+///
+///Equivalent to the [`sim_println!()`](crate::sim_println) macro except that a newline is not
+///printed at the end of the message.
+///
+///This does make use of a temporary [`SimulatorPrinter`] object, so don't invoke this if you
+///currently have one locked in the current thread to avoid a deadlock.
+///
+///Analagous to [`print!()`](std::print).
 #[macro_export]
 macro_rules! sim_print {
     ($($arg:tt)*) => {{
@@ -51,6 +64,16 @@ macro_rules! sim_print {
     }};
 }
 
+///Prints to the simulator output, with a newline.
+///
+///This may or not be the same as printing to the regular Rust standard output.
+///It is preferable if you want, for example, ensure you are logging to the same log file that the
+///simulator itself is writing to.
+///
+///This does make use of a temporary [`SimulatorPrinter`] object, so don't invoke this if you
+///currently have one locked in the current thread to avoid a deadlock.
+///
+///Analagous to [`println!()`](std::println).
 #[macro_export]
 macro_rules! sim_println {
     ($($arg:tt)*) => {{
@@ -71,6 +94,13 @@ static PRINT_MUTEX: Mutex<()> = Mutex::new(());
  * Types
  * --------------------------------------------------------------------------------------------- */
 
+///A handle to the simulator's output.
+///
+///Useful for amortizing the cost of locking the simulator's output over multiple writes.
+///
+///By default, the printer will lock on every write, but you can use the [`prelock()`](Self::prelock)
+///method to re-use a lock over multiple writes. You can release this lock by either calling
+///[`unlock()`](Self::unlock) or by dropping the struct (such as letting it go out of scope).
 #[derive(Debug)]
 pub struct SimulatorPrinter {
     guard: Option<MutexGuard<'static, ()>>
@@ -87,15 +117,30 @@ impl SimulatorPrinter {
         }
     }
 
+    ///Locks the simulator's output.
+    ///
+    ///Useful for amortizing the cost of locking the simulator's output over multiple writes.
+    ///
+    ///To avoid deadlock, you shouldn't call [`prelock()`](Self::prelock) more than once (including on
+    ///seperate instances of this struct) without calling [`unlock()`](Self::unlock) in between.
+    ///You also should avoid using the [`sim_print!()`](crate::sim_print) or [`sim_println!()`](crate::sim_println)
+    ///macros while the printer is prelocked.
     pub fn prelock(&mut self) -> Result<(), PoisonError<()>> {//To be more efficient
+        if self.guard.is_some() {//Protect against locking more than once
+            return Ok(());
+        }
         self.guard = Some(PRINT_MUTEX.lock().map_err(|_| PoisonError::new(()))?);
         Ok(())
     }
 
+    ///Unlocks the simulator's output.
+    ///
+    ///This is also called automatically when the struct is dropped.
     pub fn unlock(&mut self) {
         self.guard = None;
     }
 
+    ///Returns `true` if the simulator's output is currently prelocked.
     pub fn is_prelocked(&self) -> bool {
         self.guard.is_some()
     }
