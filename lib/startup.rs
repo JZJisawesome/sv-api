@@ -152,7 +152,6 @@ pub unsafe fn ___startup_routines_finished___() {
 
 ///Returns true if we are currently in a startup routine (and thus most SV interfaces are unavailable)
 pub fn in_startup_routine() -> bool {
-    debug_assert!(is_main_thread());
     INIT_FINISHED.get().is_none()
 }
 

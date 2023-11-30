@@ -103,6 +103,22 @@ impl SimulatorPrinter {
     pub fn new() -> Self {
         Self {}
     }
+
+    //TODO perhaps return a VpiError? using vpi_chk_error()?
+    pub fn flush(&mut self) -> Result<(), ()> {
+        //We can only call vpi_flush() after startup routines have finished, and if we are in the
+        //main thread
+        if in_startup_routine() || !is_main_thread() {
+            return Err(());
+        }
+
+        //SAFETY: We're calling vpi_flush() from the main thread and after startup routines have finished
+        if unsafe { sv_bindings::vpi_flush() } == 0 {
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
 }
 
 /* ------------------------------------------------------------------------------------------------
