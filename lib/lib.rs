@@ -19,6 +19,7 @@
 
 pub mod callbacks;
 pub mod info;
+pub mod result;
 pub mod startup;
 pub mod print;
 
