@@ -21,10 +21,9 @@
  * is useful if you need a [`Writer`] corresponding to the simulator's output.
  *
  * Since these use `vpi_printf()` internally, and according to the IEEE 1800-2017 standard, __it is
- * not safe to call it from a startup routine__, if you do, a panic will occur or you'll
- * get an [Err] depending on exactly what you're working with. This will also happen if you call
- * printing functions / invoke printing macros from a thread other than the main one, which also
- * isn't permissible.
+ * not safe to call it from a startup routine__, if you do, a panic will occur. This will also happen
+ * if you call printing functions / invoke printing macros from a thread other than the main one,
+ * which also isn't permissible.
  *
 */
 
@@ -32,12 +31,13 @@
  * Uses
  * --------------------------------------------------------------------------------------------- */
 
-use std::ffi::CString;
-use std::fmt::{Error, Write};
-use std::fmt::Result as FmtResult;
+use crate::result::Error;
+use crate::result::Result;
+use crate::startup::panic_if_in_startup_routine;
+use crate::startup::panic_if_not_main_thread;
 
-use crate::startup::in_startup_routine;
-use crate::startup::is_main_thread;
+use std::ffi::{CStr, CString};
+use std::fmt::{self, Write};
 
 /* ------------------------------------------------------------------------------------------------
  * Macros
@@ -61,7 +61,7 @@ macro_rules! sim_print {
     ($($arg:tt)*) => {{
         use std::fmt::Write as _;
         write!(::sv_api::print::SimulatorPrinter::new(), $($arg)*)
-            .expect("Failure writing to simulator output with sim_print!(), are you in a startup routine or not in the main thread?");
+            .expect("Failure writing to simulator output with sim_print!()");
     }};
 }
 
@@ -80,7 +80,7 @@ macro_rules! sim_println {
     ($($arg:tt)*) => {{
         use std::fmt::Write as _;
         writeln!(::sv_api::print::SimulatorPrinter::new(), $($arg)*)
-            .expect("Failure writing to simulator output with sim_println!(), are you in a startup routine or not in the main thread?");
+            .expect("Failure writing to simulator output with sim_println!()");
     }};
 }
 
@@ -104,19 +104,54 @@ impl SimulatorPrinter {
         Self {}
     }
 
-    //TODO perhaps return a VpiError? using vpi_chk_error()?
-    pub fn flush(&mut self) -> Result<(), ()> {
-        //We can only call vpi_flush() after startup routines have finished, and if we are in the
-        //main thread
-        if in_startup_routine() || !is_main_thread() {
-            return Err(());
-        }
+    pub fn flush(&mut self) -> Result<()> {
+        panic_if_in_startup_routine!();
+        panic_if_not_main_thread!();
 
         //SAFETY: We're calling vpi_flush() from the main thread and after startup routines have finished
         if unsafe { sv_bindings::vpi_flush() } == 0 {
             Ok(())
         } else {
-            Err(())
+            //TODO perhaps return a VpiError? using vpi_chk_error()?
+            Err(Box::new(Error::Unknown))
+        }
+    }
+
+    ///Write textual data to the simulator's output
+    ///
+    ///Since the backing `vpi_printf()` function used is not thread safe, ['write_str()`]
+    ///will panic if you attempt to call it from a thread other than the main one.
+    ///
+    ///It will also panic if you attempt to call it during a start routine since
+    ///`vpi_printf()` also doesn't support this.
+    ///
+    ///Unlike [`write_str()`](std::fmt::Write::write_str), this writes a C string rather
+    ///than a Rust string, which can be useful if you need to write-non UTF-8 data.
+    pub fn write_cstr(&mut self, cstr: &CStr) -> Result<()> {
+        panic_if_in_startup_routine!();
+        panic_if_not_main_thread!();
+
+        //We can only print up to i32::MAX bytes since that's all we can check
+        //to ensure that the string was printed successfully
+        let num_bytes: i32 = cstr.to_bytes().len().try_into().map_err(|e| Error::Other(Box::new(e)))?;
+
+        //Null-terminated format string
+        const FORMAT_STRING_PTR: *const sv_bindings::PLI_BYTE8 = b"%s\0".as_ptr().cast();
+
+        //SAFETY: It is safe to cast to *mut because vpi_printf does not modify the string.
+        //We are also guaranteed that the 2nd string is null terminated because the pointer is from a
+        //CStr. We only actually print if we weren't in a startup routine, and finally we only print
+        //if we are in the main thread.
+        //Additionally, the format string is properly formed and is null terminated.
+        let num_bytes_written = unsafe {
+            sv_bindings::vpi_printf(FORMAT_STRING_PTR as *mut _, cstr.as_ptr())
+        };
+
+        if num_bytes_written == num_bytes {
+            Ok(())
+        } else {//EOF or more or less bytes written than expected
+            //TODO perhaps return a VpiError? using vpi_chk_error()?
+            Err(Box::new(Error::Unknown))
         }
     }
 }
@@ -126,39 +161,24 @@ impl SimulatorPrinter {
  * --------------------------------------------------------------------------------------------- */
 
 impl Write for SimulatorPrinter {
-    ///Write formatted textual data to the simulator's output
-    ///Since the backing `vpi_printf()` function used is not thread safe, write_str will return an
-    ///[`Err`] if you attempt to call [`write_str()`] from a thread other than the main one.
+    ///Write textual data to the simulator's output
     ///
-    ///It will also [`Err`] out if you attempt to call it during a start routine since
+    ///Since the backing `vpi_printf()` function used is not thread safe, ['write_str()`]
+    ///will panic if you attempt to call it from a thread other than the main one.
+    ///
+    ///It will also panic if you attempt to call it during a start routine since
     ///`vpi_printf()` also doesn't support this.
-    fn write_str(&mut self, string: &str) -> FmtResult {
-        //We can only call vpi_printf() after startup routines have finished, and if we are in the
-        //main thread
-        if in_startup_routine() || !is_main_thread() {
-            return Err(Error);
-        }
-
-        //We can only print up to i32::MAX bytes since that's all we can check
-        //to ensure that the string was printed successfully
-        let num_bytes: i32 = string.len().try_into().map_err(|_| Error)?;
+    ///
+    ///Unlike [`write_cstr()`](SimulatorPrinter::write_cstr), this writes a Rust string
+    ///rather than a C string.
+    fn write_str(&mut self, str_: &str) -> fmt::Result {
+        panic_if_in_startup_routine!();
+        panic_if_not_main_thread!();
 
         //Need a null terminated string to actually print
-        let cstring = CString::new(string).map_err(|_| Error)?;
+        let cstring = CString::new(str_).map_err(|_| fmt::Error)?;
 
-        //SAFETY: It is safe to cast to *mut PLI_BYTE8 because vpi_printf does not modify the string.
-        //We are also guaranteed that the string is null terminated because the pointer is from a
-        //CString. We only actually print if we weren't in a startup routine, and finally
-        //we only print if we are in the main thread.
-        let num_bytes_written = unsafe {
-            sv_bindings::vpi_printf(cstring.as_ptr() as *mut sv_bindings::PLI_BYTE8)
-        };
-
-        if num_bytes_written == num_bytes {
-            Ok(())
-        } else {//EOF or more or less bytes written than expected
-            Err(Error)
-        }
+        self.write_cstr(&cstring).map_err(|_| fmt::Error)
     }
 }
 
