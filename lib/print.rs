@@ -113,7 +113,7 @@ impl SimulatorPrinter {
             Ok(())
         } else {
             //TODO perhaps return a VpiError? using vpi_chk_error()?
-            Err(Box::new(Error::Unknown))
+            Error::Unknown.into()
         }
     }
 
@@ -133,7 +133,7 @@ impl SimulatorPrinter {
 
         //We can only print up to i32::MAX bytes since that's all we can check
         //to ensure that the string was printed successfully
-        let num_bytes: i32 = cstr.to_bytes().len().try_into().map_err(|e| Error::Other(Box::new(e)))?;
+        let num_bytes: i32 = cstr.to_bytes().len().try_into().map_err(|e| Error::other(e))?;
 
         //Null-terminated format string
         const FORMAT_STRING_PTR: *const sv_bindings::PLI_BYTE8 = b"%s\0".as_ptr().cast();
@@ -151,7 +151,7 @@ impl SimulatorPrinter {
             Ok(())
         } else {//EOF or more or less bytes written than expected
             //TODO perhaps return a VpiError? using vpi_chk_error()?
-            Err(Box::new(Error::Unknown))
+            Error::Unknown.into()
         }
     }
 }

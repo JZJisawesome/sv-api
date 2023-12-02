@@ -92,7 +92,7 @@ pub fn arguments() -> Result<Vec<&'static str>> {
 
     arguments_cstr()?.iter()
         .map(|&cstr|
-             cstr.to_str().map_err(|e| Box::new(Error::Other(Box::new(e))))
+             cstr.to_str().map_err(|e| Box::new(Error::other(e)))//TODO why is box needed here but not elsewhere?
         )
         .collect()
 }
@@ -110,7 +110,7 @@ pub fn product_name() -> Result<&'static str> {
     panic_if_in_startup_routine!();
     panic_if_not_main_thread!();
 
-    Ok(product_name_cstr()?.to_str().map_err(|e| Error::Other(Box::new(e)))?)
+    Ok(product_name_cstr()?.to_str().map_err(|e| Error::other(e))?)
 }
 
 //TODO is 'static a correct assumption? Do the string pointers we are passed last forever?
@@ -126,7 +126,7 @@ pub fn version() -> Result<&'static str> {
     panic_if_in_startup_routine!();
     panic_if_not_main_thread!();
 
-    Ok(version_cstr()?.to_str().map_err(|e| Error::Other(Box::new(e)))?)
+    Ok(version_cstr()?.to_str().map_err(|e| Error::other(e))?)
 }
 
 //TODO is 'static a correct assumption? Do the string pointers we are passed last forever?
@@ -142,20 +142,20 @@ pub fn dpi_version() -> Result<&'static str> {
     panic_if_in_startup_routine!();
     panic_if_not_main_thread!();
 
-    Ok(dpi_version_cstr()?.to_str().map_err(|e| Error::Other(Box::new(e)))?)
+    Ok(dpi_version_cstr().to_str().map_err(|e| Error::other(e))?)
 }
 
 //TODO is 'static a correct assumption? Do the string pointers we are passed last forever?
-pub fn dpi_version_cstr() -> Result<&'static CStr> {
+pub fn dpi_version_cstr() -> &'static CStr {
     panic_if_in_startup_routine!();
     panic_if_not_main_thread!();
 
     //SAFETY: We assume svDpiVersion() returns a proper null-terminated string
-    Ok(unsafe {
+    unsafe {
         let raw_dpi_version_str_ptr = sv_bindings::svDpiVersion();
         assert!(!raw_dpi_version_str_ptr.is_null());
         std::ffi::CStr::from_ptr(sv_bindings::svDpiVersion())
-    })
+    }
 }
 
 //TODO is 'static a correct assumption? Do the string pointers we are passed last forever?
@@ -167,14 +167,14 @@ fn vpi_get_safe_vlog_info_wrapper() -> Result<SafeVlogInfoWrapper<'static>> {
         argc: 0,
         argv: std::ptr::null_mut(),
         product: std::ptr::null_mut(),
-        version: std::ptr::null_mut(),
+        version: std::ptr::null_mut()
     };
 
     //SAFETY: vpi_get_vlog_info() is safe to call from the main thread
     //and we are not in a startup routine so we're good.
     unsafe {
         if sv_bindings::vpi_get_vlog_info(&mut raw_info) != 1 {
-            return Err(Box::new(Error::Unknown));//TODO be more detailed
+            return Error::Unknown.into();//TODO be more detailed
         }
     }
 
