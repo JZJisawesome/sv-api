@@ -1,16 +1,19 @@
 /*
  * File:    info.rs
- * Brief:   TODO
+ * Brief:   Utilities to query information about the simulator.
  *
  * Copyright (C) 2023 John Jekel
  * See the LICENSE file at the root of the project for licensing info.
  *
- * TODO longer description
+ * Wrappers around vpi_get_vlog_info and svDpiVersion
  *
 */
 
 /*!
- * TODO rustdoc for this file here
+ * Utilities to query information about the simulator.
+ *
+ * If your code needs to know information about the simulator it is running on, command line /
+ * option arguments, or the version of the DPI interface supported, this module is for you!
 */
 
 /* ------------------------------------------------------------------------------------------------
@@ -25,6 +28,11 @@
 
 use crate::startup::panic_if_in_startup_routine;
 use crate::startup::panic_if_not_main_thread;
+
+use crate::result::Error;
+use crate::result::Result;
+
+use std::ffi::CStr;
 
 /* ------------------------------------------------------------------------------------------------
  * Macros
@@ -49,10 +57,10 @@ use crate::startup::panic_if_not_main_thread;
  * --------------------------------------------------------------------------------------------- */
 
 #[derive(Debug)]
-pub struct SimulatorInfo<'a> {
-    arguments: Vec<&'a str>,
-    product_name: &'a str,
-    version: &'a str
+struct SafeVlogInfoWrapper<'a> {
+    arguments: Vec<&'a CStr>,
+    product_name: &'a CStr,
+    version: &'a CStr
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -78,7 +86,80 @@ pub struct SimulatorInfo<'a> {
  * --------------------------------------------------------------------------------------------- */
 
 //TODO is 'static a correct assumption? Do the string pointers we are passed last forever?
-pub fn get_simulator_info() -> Option<SimulatorInfo<'static>> {
+pub fn arguments() -> Result<Vec<&'static str>> {
+    panic_if_in_startup_routine!();
+    panic_if_not_main_thread!();
+
+    arguments_cstr()?.iter()
+        .map(|&cstr|
+             cstr.to_str().map_err(|e| Box::new(Error::Other(Box::new(e))))
+        )
+        .collect()
+}
+
+//TODO is 'static a correct assumption? Do the string pointers we are passed last forever?
+pub fn arguments_cstr() -> Result<Vec<&'static CStr>> {
+    panic_if_in_startup_routine!();
+    panic_if_not_main_thread!();
+
+    Ok(vpi_get_safe_vlog_info_wrapper()?.arguments)
+}
+
+//TODO is 'static a correct assumption? Do the string pointers we are passed last forever?
+pub fn product_name() -> Result<&'static str> {
+    panic_if_in_startup_routine!();
+    panic_if_not_main_thread!();
+
+    Ok(product_name_cstr()?.to_str().map_err(|e| Error::Other(Box::new(e)))?)
+}
+
+//TODO is 'static a correct assumption? Do the string pointers we are passed last forever?
+pub fn product_name_cstr() -> Result<&'static CStr> {
+    panic_if_in_startup_routine!();
+    panic_if_not_main_thread!();
+
+    Ok(vpi_get_safe_vlog_info_wrapper()?.product_name)
+}
+
+//TODO is 'static a correct assumption? Do the string pointers we are passed last forever?
+pub fn version() -> Result<&'static str> {
+    panic_if_in_startup_routine!();
+    panic_if_not_main_thread!();
+
+    Ok(version_cstr()?.to_str().map_err(|e| Error::Other(Box::new(e)))?)
+}
+
+//TODO is 'static a correct assumption? Do the string pointers we are passed last forever?
+pub fn version_cstr() -> Result<&'static CStr> {
+    panic_if_in_startup_routine!();
+    panic_if_not_main_thread!();
+
+    Ok(vpi_get_safe_vlog_info_wrapper()?.version)
+}
+
+//TODO is 'static a correct assumption? Do the string pointers we are passed last forever?
+pub fn dpi_version() -> Result<&'static str> {
+    panic_if_in_startup_routine!();
+    panic_if_not_main_thread!();
+
+    Ok(dpi_version_cstr()?.to_str().map_err(|e| Error::Other(Box::new(e)))?)
+}
+
+//TODO is 'static a correct assumption? Do the string pointers we are passed last forever?
+pub fn dpi_version_cstr() -> Result<&'static CStr> {
+    panic_if_in_startup_routine!();
+    panic_if_not_main_thread!();
+
+    //SAFETY: We assume svDpiVersion() returns a proper null-terminated string
+    Ok(unsafe {
+        let raw_dpi_version_str_ptr = sv_bindings::svDpiVersion();
+        assert!(!raw_dpi_version_str_ptr.is_null());
+        std::ffi::CStr::from_ptr(sv_bindings::svDpiVersion())
+    })
+}
+
+//TODO is 'static a correct assumption? Do the string pointers we are passed last forever?
+fn vpi_get_safe_vlog_info_wrapper() -> Result<SafeVlogInfoWrapper<'static>> {
     panic_if_in_startup_routine!();
     panic_if_not_main_thread!();
 
@@ -93,51 +174,40 @@ pub fn get_simulator_info() -> Option<SimulatorInfo<'static>> {
     //and we are not in a startup routine so we're good.
     unsafe {
         if sv_bindings::vpi_get_vlog_info(&mut raw_info) != 1 {
-            return None;
+            return Err(Box::new(Error::Unknown));//TODO be more detailed
         }
     }
 
     //Package up command line arguments/arguments from an "options" file into a Vec
-    let num_args = raw_info.argc.try_into().ok()?;
+    let num_args = raw_info.argc.try_into()
+        .expect("Simulator gave us a negative number of arguments even though it shouldn't!");
     let mut arguments = Vec::with_capacity(num_args);
     for i in 0..num_args {
         //SAFETY: We are only offsetting in argv by at most num_args - 1
         //which is the number of elements in argv guaranteed by the LRM.
         let arg_str_ptr = unsafe { *(raw_info.argv.add(i)) };
 
-        if arg_str_ptr.is_null() {
-            return None;//This should never happen, but just in case it does...
-        }
+        assert!(!arg_str_ptr.is_null(), "Got null pointer from simulator where one was not expected!");
 
         //SAFETY: We should have been given a valid null-terminated string
-        let arg_str = unsafe { std::ffi::CStr::from_ptr(arg_str_ptr) }.to_str().ok()?;
+        let arg_str = unsafe { std::ffi::CStr::from_ptr(arg_str_ptr) };
 
         arguments.push(arg_str);
     }
 
     //Package up the simulator's product name and version
-    if raw_info.product.is_null() || raw_info.version.is_null() {
-        return None;//This should never happen, but just in case it does...
-    }
+    assert!(!raw_info.product.is_null(), "Got null pointer from simulator where one was not expected!");
+    assert!(!raw_info.version.is_null(), "Got null pointer from simulator where one was not expected!");
 
-    //SAFETY: We should have been given a valid null-terminated string
-    let product_name    = unsafe { std::ffi::CStr::from_ptr(raw_info.product) }.to_str().ok()?;
-    let version         = unsafe { std::ffi::CStr::from_ptr(raw_info.version) }.to_str().ok()?;
+    //SAFETY: We should have been given valid null-terminated strings
+    let product_name    = unsafe { std::ffi::CStr::from_ptr(raw_info.product) };
+    let version         = unsafe { std::ffi::CStr::from_ptr(raw_info.version) };
 
-    Some(SimulatorInfo {
+    Ok(SafeVlogInfoWrapper {
         arguments:      arguments,
         product_name:   product_name,
         version:        version
     })
-}
-
-pub fn get_dpi_version() -> &'static str {
-    panic_if_in_startup_routine!();
-    panic_if_not_main_thread!();
-    unsafe {
-        //FIXME is the string pointer guaranteed to always be valid (or should we make a copy)?
-        std::ffi::CStr::from_ptr(sv_bindings::svDpiVersion())
-    }.to_str().unwrap()
 }
 
 /* ------------------------------------------------------------------------------------------------

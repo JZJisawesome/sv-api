@@ -89,13 +89,17 @@ fn start_of_simulation_callback() {
     let mut printer = print::SimulatorPrinter::new();
     writeln!(printer, "Multiple writes to the simulator's output...").unwrap();
     writeln!(printer, "...but done using a Writer!").unwrap();
+    printer.flush().unwrap();
     sim_println!("Alrighty onto more interesting things!");
 
     std::thread::spawn(|| {
         //sim_println!("Hello from a thread!");//This would panic too
     });
 
-    dbg!(info::get_simulator_info());
+    sim_println!("Simulator Product: \"{}\"", info::product_name().unwrap());
+    sim_println!("Simulator Version: \"{}\"", info::version().unwrap());
+    sim_println!("Simulator Command Line Arguments: {:?}", info::arguments().unwrap());
+    //sim_println!("DPI Version: \"{}\"", info::dpi_version().unwrap());
 
     //TODO
 }
