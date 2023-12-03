@@ -102,7 +102,7 @@ impl CallbackDataWrapper {
 }
 
 impl CallbackBuilder {
-    pub fn new() -> CallbackBuilder {
+    pub const fn new() -> CallbackBuilder {
         CallbackBuilder { func: None }
     }
 
@@ -132,7 +132,7 @@ impl CallbackBuilder {
         //TESTING
         unsafe {
             START_OF_SIM_CALLBACK_DATA.cb_rtn = Some(CallbackBuilder::closure_wrapper); //Some(self.func.unwrap());
-            let time = Time::SimTime { high: 1, low: 2 };
+            let time = Time::SimTime { high: 0, low: 1 };
             let ctime: sv_bindings::t_vpi_time = time.into();
             let ctimebox = Box::new(ctime);
             START_OF_SIM_CALLBACK_DATA.time = Box::into_raw(ctimebox);

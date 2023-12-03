@@ -101,7 +101,7 @@ pub struct SimulatorPrinter {}
  * --------------------------------------------------------------------------------------------- */
 
 impl SimulatorPrinter {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {}
     }
 

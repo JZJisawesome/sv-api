@@ -69,8 +69,8 @@ macro_rules! vlog_startup_routines {
 macro_rules! this_fn_str {
     () => {{
         //Thanks https://stackoverflow.com/questions/38088067/equivalent-of-func-or-function-in-rust
-        fn ___subfunction___() {}
-        fn ___type_name_of___<T>(_: T) -> &'static str {
+        const fn ___subfunction___() {}
+        fn ___type_name_of___<T>(_: T) -> &'static str {//TODO make this fn const
             std::any::type_name::<T>()
         }
         ___type_name_of___(___subfunction___)

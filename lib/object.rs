@@ -393,11 +393,94 @@ pub enum ObjectProperty {
     IsProtected,          // TRUE for protected design information
 }
 
+#[derive(Clone, Copy, Debug)]
+#[repr(i32)]
+pub enum Scalar {
+    Zero = sv_bindings::vpi0,
+    One = sv_bindings::vpi1,
+    X = sv_bindings::vpiX,
+    Z = sv_bindings::vpiZ,
+}
+
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum Value {
+    BinStr(CString),
+    OctStr(CString),
+    DecStr(CString),
+    HexStr(CString),
+    Scalar(Scalar),
+    Integer(i32),
+    Real(f64),
+    String(CString),
+    Vector(Vec<Scalar>),
+    Strength,//TODO contents
+    Suppress,
+    Time,//TODO contents
+    ObjType,//TODO contents
+}
+
+#[derive(Clone, Copy, Debug)]
+#[repr(i32)]
+#[non_exhaustive]
+pub enum ValueKind {
+    BinStr = sv_bindings::vpiBinStrVal,
+    OctStr = sv_bindings::vpiOctStrVal,
+    DecStr = sv_bindings::vpiDecStrVal,
+    HexStr = sv_bindings::vpiHexStrVal,
+    Scalar = sv_bindings::vpiScalarVal,
+    Integer = sv_bindings::vpiIntVal,
+    Real = sv_bindings::vpiRealVal,
+    String = sv_bindings::vpiStringVal,
+    Vector = sv_bindings::vpiVectorVal,
+    Strength = sv_bindings::vpiStrengthVal,
+    Suppress = sv_bindings::vpiSuppressVal,
+    Time = sv_bindings::vpiTimeVal,
+    ObjType = sv_bindings::vpiObjTypeVal,
+}
+
 /* ------------------------------------------------------------------------------------------------
  * Associated Functions and Methods
  * --------------------------------------------------------------------------------------------- */
 
 impl ObjectHandle {
+    pub fn get_property_bool(&mut self, property: ObjectProperty) -> Result<bool> {
+        panic_if_in_startup_routine!();
+        panic_if_not_main_thread!();
+
+        let property_integer = self.get_property_i32(property)?;
+        
+        match property_integer {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Error::UnknownSimulatorError.into(),//Happens if this isn't a boolean property
+        }
+    }
+
+    pub fn get_property_i32(&mut self, property: ObjectProperty) -> Result<i32> {
+        panic_if_in_startup_routine!();
+        panic_if_not_main_thread!();
+
+        //FIXME justify safety
+        let result = unsafe { sv_bindings::vpi_get(property.into(), self.0.as_ptr()) };
+
+        result::from_last_vpi_call()?;
+
+        Ok(result)
+    }
+
+    pub fn get_property_i64(&mut self, property: ObjectProperty) -> Result<i64> {
+        panic_if_in_startup_routine!();
+        panic_if_not_main_thread!();
+
+        //FIXME justify safety
+        let result = unsafe { sv_bindings::vpi_get64(property.into(), self.0.as_ptr()) };
+
+        result::from_last_vpi_call()?;
+
+        Ok(result)
+    }
+
     pub fn get_property_string(&mut self, property: ObjectProperty) -> Result<String> {
         panic_if_in_startup_routine!();
         panic_if_not_main_thread!();
@@ -422,6 +505,13 @@ impl ObjectHandle {
             //LRM says explictly we need to make a copy here
             Ok(unsafe { CStr::from_ptr(cstring) }.to_owned() )
         }
+    }
+
+    pub fn get_value(&mut self, value_kind: ValueKind) -> Result<Value> {
+        panic_if_in_startup_routine!();
+        panic_if_not_main_thread!();
+
+        todo!()//TODO
     }
 }
 
@@ -464,6 +554,26 @@ impl ObjectChildrenIterator {
         Ok(ObjectChildrenIterator {
             iterator_handle: iterator_handle,
         })
+    }
+}
+
+impl Value {
+    pub const fn kind(&self) -> ValueKind {
+        match self {
+            Value::BinStr(_) => ValueKind::BinStr,
+            Value::OctStr(_) => ValueKind::OctStr,
+            Value::DecStr(_) => ValueKind::DecStr,
+            Value::HexStr(_) => ValueKind::HexStr,
+            Value::Scalar(_) => ValueKind::Scalar,
+            Value::Integer(_) => ValueKind::Integer,
+            Value::Real(_) => ValueKind::Real,
+            Value::String(_) => ValueKind::String,
+            Value::Vector(_) => ValueKind::Vector,
+            Value::Strength => ValueKind::Strength,//TODO contents
+            Value::Suppress => ValueKind::Suppress,
+            Value::Time => ValueKind::Time,//TODO contents
+            Value::ObjType => ValueKind::ObjType,//TODO contents
+        }
     }
 }
 
@@ -612,30 +722,6 @@ impl From<ObjectProperty> for i32 {
             ObjectProperty::NmosPrim => sv_bindings::vpiNmosPrim,
             ObjectProperty::PmosPrim => sv_bindings::vpiPmosPrim,
             ObjectProperty::CmosPrim => sv_bindings::vpiCmosPrim,
-            ObjectProperty::RnmosPrim => sv_bindings::vpiRnmosPrim,
-            ObjectProperty::RpmosPrim => sv_bindings::vpiRpmosPrim,
-            ObjectProperty::RcmosPrim => sv_bindings::vpiRcmosPrim,
-            ObjectProperty::RtranPrim => sv_bindings::vpiRtranPrim,
-            ObjectProperty::Rtranif0Prim => sv_bindings::vpiRtranif0Prim,
-            ObjectProperty::Rtranif1Prim => sv_bindings::vpiRtranif1Prim,
-            ObjectProperty::TranPrim => sv_bindings::vpiTranPrim,
-            ObjectProperty::Tranif0Prim => sv_bindings::vpiTranif0Prim,
-            ObjectProperty::Tranif1Prim => sv_bindings::vpiTranif1Prim,
-            ObjectProperty::PullupPrim => sv_bindings::vpiPullupPrim,
-            ObjectProperty::PulldownPrim => sv_bindings::vpiPulldownPrim,
-            ObjectProperty::SeqPrim => sv_bindings::vpiSeqPrim,
-            ObjectProperty::CombPrim => sv_bindings::vpiCombPrim,
-            ObjectProperty::Polarity => sv_bindings::vpiPolarity,
-            ObjectProperty::DataPolarity => sv_bindings::vpiDataPolarity,
-            ObjectProperty::Positive => sv_bindings::vpiPositive,
-            ObjectProperty::Negative => sv_bindings::vpiNegative,
-            ObjectProperty::Unknown => sv_bindings::vpiUnknown,
-            ObjectProperty::Edge => sv_bindings::vpiEdge,
-            ObjectProperty::NoEdge => sv_bindings::vpiNoEdge,
-            ObjectProperty::Edge01 => sv_bindings::vpiEdge01,
-            ObjectProperty::Edge10 => sv_bindings::vpiEdge10,
-            ObjectProperty::Edge0x => sv_bindings::vpiEdge0x,
-            ObjectProperty::Edgex1 => sv_bindings::vpiEdgex1,
             ObjectProperty::RnmosPrim => sv_bindings::vpiRnmosPrim,
             ObjectProperty::RpmosPrim => sv_bindings::vpiRpmosPrim,
             ObjectProperty::RcmosPrim => sv_bindings::vpiRcmosPrim,
