@@ -9,11 +9,21 @@
  *
 */
 
-module hello();
+module top();
+    reg a;
+    child c();
+    child2 c2();
+endmodule
+
+module child();
+    wire a;
+    grandchild gc();
+endmodule
+
+module child2();
     wire b;
 endmodule
 
-module top();
-    reg a;
-    hello h();
+module grandchild();
+    wire c;
 endmodule

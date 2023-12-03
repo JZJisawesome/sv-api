@@ -80,7 +80,7 @@ pub enum Error /*<'a>*/ {
 //We box the Error to reduce the cost of the normal case when there are no errors
 pub type Result<T> = std::result::Result<T, Box<Error>>;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(i32)]
 pub enum State {
     Compile = sv_bindings::vpiCompile,
@@ -88,7 +88,7 @@ pub enum State {
     Run = sv_bindings::vpiRun,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(i32)]
 pub enum Severity {
     Notice = sv_bindings::vpiNotice,
