@@ -19,9 +19,9 @@
 
 pub mod callbacks;
 pub mod info;
+pub mod print;
 pub mod result;
 pub mod startup;
-pub mod print;
 
 /* ------------------------------------------------------------------------------------------------
  * Uses
@@ -54,12 +54,12 @@ pub mod print;
 #[derive(Debug)]
 #[repr(transparent)]
 pub struct ObjectHandle {
-    handle: std::ptr::NonNull<sv_bindings::PLI_UINT32>//We don't want a pointer to a pointer
+    handle: std::ptr::NonNull<sv_bindings::PLI_UINT32>, //We don't want a pointer to a pointer
 }
 
 #[derive(Debug)]
 pub struct ObjectIterator {
-    iterator_handle: Option<ObjectHandle>
+    iterator_handle: Option<ObjectHandle>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -137,28 +137,28 @@ pub enum ObjectType {
     While = sv_bindings::vpiWhile,                 // while statement
 
     // Object types added with 1364-2001
-    Attribute = sv_bindings::vpiAttribute,              // attribute of an object
-    BitSelect = sv_bindings::vpiBitSelect,              // Bit-select of parameter, var select
-    Callback = sv_bindings::vpiCallback,                // callback object
-    DelayTerm = sv_bindings::vpiDelayTerm,              // Delay term which is a load or driver
-    DelayDevice = sv_bindings::vpiDelayDevice,          // Delay object within a net
-    Frame = sv_bindings::vpiFrame,                      // reentrant task/func frame
-    GateArray = sv_bindings::vpiGateArray,              // gate instance array
-    ModuleArray = sv_bindings::vpiModuleArray,          // module instance array
-    PrimitiveArray = sv_bindings::vpiPrimitiveArray,    // vpiprimitiveArray type
-    NetArray = sv_bindings::vpiNetArray,                // multidimensional net
-    Range = sv_bindings::vpiRange,                      // range declaration
-    RegArray = sv_bindings::vpiRegArray,                // multidimensional reg
-    SwitchArray = sv_bindings::vpiSwitchArray,          // switch instance array
-    UdpArray = sv_bindings::vpiUdpArray,                // UDP instance array
-    ContAssignBit = sv_bindings::vpiContAssignBit,      // Bit of a vector continuous assignment
-    NamedEventArray = sv_bindings::vpiNamedEventArray,  // multidimensional named event
+    Attribute = sv_bindings::vpiAttribute, // attribute of an object
+    BitSelect = sv_bindings::vpiBitSelect, // Bit-select of parameter, var select
+    Callback = sv_bindings::vpiCallback,   // callback object
+    DelayTerm = sv_bindings::vpiDelayTerm, // Delay term which is a load or driver
+    DelayDevice = sv_bindings::vpiDelayDevice, // Delay object within a net
+    Frame = sv_bindings::vpiFrame,         // reentrant task/func frame
+    GateArray = sv_bindings::vpiGateArray, // gate instance array
+    ModuleArray = sv_bindings::vpiModuleArray, // module instance array
+    PrimitiveArray = sv_bindings::vpiPrimitiveArray, // vpiprimitiveArray type
+    NetArray = sv_bindings::vpiNetArray,   // multidimensional net
+    Range = sv_bindings::vpiRange,         // range declaration
+    RegArray = sv_bindings::vpiRegArray,   // multidimensional reg
+    SwitchArray = sv_bindings::vpiSwitchArray, // switch instance array
+    UdpArray = sv_bindings::vpiUdpArray,   // UDP instance array
+    ContAssignBit = sv_bindings::vpiContAssignBit, // Bit of a vector continuous assignment
+    NamedEventArray = sv_bindings::vpiNamedEventArray, // multidimensional named event
 
     // Object types added with 1364-2005
-    IndexedPartSelect = sv_bindings::vpiIndexedPartSelect,  // Indexed part-select object
-    GenScopeArray = sv_bindings::vpiGenScopeArray,          // array of generated scopes
-    GenScope = sv_bindings::vpiGenScope,                    // A generated scope
-    GenVar = sv_bindings::vpiGenVar,                        // Object used to instantiate gen scopes
+    IndexedPartSelect = sv_bindings::vpiIndexedPartSelect, // Indexed part-select object
+    GenScopeArray = sv_bindings::vpiGenScopeArray,         // array of generated scopes
+    GenScope = sv_bindings::vpiGenScope,                   // A generated scope
+    GenVar = sv_bindings::vpiGenVar,                       // Object used to instantiate gen scopes
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -169,32 +169,38 @@ impl ObjectIterator {
     fn new(object_type: ObjectType) -> ObjectIterator {
         startup::panic_if_in_startup_routine!();
         //FIXME justify safety
-        let raw_handle = unsafe { sv_bindings::vpi_iterate(object_type as i32, std::ptr::null_mut()) };
+        let raw_handle =
+            unsafe { sv_bindings::vpi_iterate(object_type as i32, std::ptr::null_mut()) };
 
         let iterator_handle = if raw_handle.is_null() {
             None
         } else {
-            Some(ObjectHandle { handle: std::ptr::NonNull::new(raw_handle).unwrap() })
+            Some(ObjectHandle {
+                handle: std::ptr::NonNull::new(raw_handle).unwrap(),
+            })
         };
 
         ObjectIterator {
-            iterator_handle: iterator_handle
+            iterator_handle: iterator_handle,
         }
     }
 
     fn new_with_reference(object_type: ObjectType, reference: &mut ObjectHandle) -> ObjectIterator {
         startup::panic_if_in_startup_routine!();
         //FIXME justify safety
-        let raw_handle = unsafe { sv_bindings::vpi_iterate(object_type as i32, reference.handle.as_ptr()) };
+        let raw_handle =
+            unsafe { sv_bindings::vpi_iterate(object_type as i32, reference.handle.as_ptr()) };
 
         let iterator_handle = if raw_handle.is_null() {
             None
         } else {
-            Some(ObjectHandle { handle: std::ptr::NonNull::new(raw_handle).unwrap() })
+            Some(ObjectHandle {
+                handle: std::ptr::NonNull::new(raw_handle).unwrap(),
+            })
         };
 
         ObjectIterator {
-            iterator_handle: iterator_handle
+            iterator_handle: iterator_handle,
         }
     }
 }
@@ -229,17 +235,18 @@ impl Iterator for ObjectIterator {
         let unwrapped_iterator_handle = self.iterator_handle.as_mut()?;
 
         //FIXME justify safety
-        let raw_handle_from_scan = unsafe {
-            sv_bindings::vpi_scan(unwrapped_iterator_handle.handle.as_ptr())
-        };
+        let raw_handle_from_scan =
+            unsafe { sv_bindings::vpi_scan(unwrapped_iterator_handle.handle.as_ptr()) };
 
         if raw_handle_from_scan.is_null() {
             //FIXME I actually don't think we should release the iterator handle in this case (scan
             //being null already takes care of that)
-            self.iterator_handle = None;//Iterator handle is now invalid (this drops it)
+            self.iterator_handle = None; //Iterator handle is now invalid (this drops it)
             None
         } else {
-            Some(ObjectHandle { handle: std::ptr::NonNull::new(raw_handle_from_scan).unwrap() })
+            Some(ObjectHandle {
+                handle: std::ptr::NonNull::new(raw_handle_from_scan).unwrap(),
+            })
         }
     }
 }
@@ -320,7 +327,6 @@ extern "C" fn start_of_sim_callback(callback_data_ptr: *mut sv_bindings::t_cb_da
 }
 */
 //End of TESTING
-
 
 /* ------------------------------------------------------------------------------------------------
  * Tests

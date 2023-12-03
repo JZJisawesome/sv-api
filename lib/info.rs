@@ -61,7 +61,7 @@ use std::ffi::CStr;
 struct SafeVlogInfoWrapper<'a> {
     arguments: Vec<&'a CStr>,
     product_name: &'a CStr,
-    version: &'a CStr
+    version: &'a CStr,
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -91,9 +91,10 @@ pub fn arguments() -> Result<Vec<&'static str>> {
     panic_if_in_startup_routine!();
     panic_if_not_main_thread!();
 
-    arguments_cstr()?.iter()
-        .map(|&cstr|
-             cstr.to_str().map_err(|e| Box::new(Error::other(e)))//TODO why is box needed here but not elsewhere?
+    arguments_cstr()?
+        .iter()
+        .map(
+            |&cstr| cstr.to_str().map_err(|e| Box::new(Error::other(e))), //TODO why is box needed here but not elsewhere?
         )
         .collect()
 }
@@ -169,7 +170,7 @@ fn vpi_get_safe_vlog_info_wrapper() -> Result<SafeVlogInfoWrapper<'static>> {
         argc: 0,
         argv: std::ptr::null_mut(),
         product: std::ptr::null_mut(),
-        version: std::ptr::null_mut()
+        version: std::ptr::null_mut(),
     };
 
     //SAFETY: vpi_get_vlog_info() is safe to call from the main thread
@@ -183,7 +184,9 @@ fn vpi_get_safe_vlog_info_wrapper() -> Result<SafeVlogInfoWrapper<'static>> {
     }
 
     //Package up command line arguments/arguments from an "options" file into a Vec
-    let num_args = raw_info.argc.try_into()
+    let num_args = raw_info
+        .argc
+        .try_into()
         .expect("Simulator gave us a negative number of arguments even though it shouldn't!");
     let mut arguments = Vec::with_capacity(num_args);
     for i in 0..num_args {
@@ -191,7 +194,10 @@ fn vpi_get_safe_vlog_info_wrapper() -> Result<SafeVlogInfoWrapper<'static>> {
         //which is the number of elements in argv guaranteed by the LRM.
         let arg_str_ptr = unsafe { *(raw_info.argv.add(i)) };
 
-        debug_assert!(!arg_str_ptr.is_null(), "Got null pointer from simulator where one was not expected!");
+        debug_assert!(
+            !arg_str_ptr.is_null(),
+            "Got null pointer from simulator where one was not expected!"
+        );
 
         //SAFETY: We should have been given a valid null-terminated string
         let arg_str = unsafe { std::ffi::CStr::from_ptr(arg_str_ptr) };
@@ -200,17 +206,23 @@ fn vpi_get_safe_vlog_info_wrapper() -> Result<SafeVlogInfoWrapper<'static>> {
     }
 
     //Package up the simulator's product name and version
-    debug_assert!(!raw_info.product.is_null(), "Got null pointer from simulator where one was not expected!");
-    debug_assert!(!raw_info.version.is_null(), "Got null pointer from simulator where one was not expected!");
+    debug_assert!(
+        !raw_info.product.is_null(),
+        "Got null pointer from simulator where one was not expected!"
+    );
+    debug_assert!(
+        !raw_info.version.is_null(),
+        "Got null pointer from simulator where one was not expected!"
+    );
 
     //SAFETY: We should have been given valid null-terminated strings
-    let product_name    = unsafe { std::ffi::CStr::from_ptr(raw_info.product) };
-    let version         = unsafe { std::ffi::CStr::from_ptr(raw_info.version) };
+    let product_name = unsafe { std::ffi::CStr::from_ptr(raw_info.product) };
+    let version = unsafe { std::ffi::CStr::from_ptr(raw_info.version) };
 
     Ok(SafeVlogInfoWrapper {
-        arguments:      arguments,
-        product_name:   product_name,
-        version:        version
+        arguments: arguments,
+        product_name: product_name,
+        version: version,
     })
 }
 

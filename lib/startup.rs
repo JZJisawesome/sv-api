@@ -76,14 +76,17 @@ macro_rules! this_fn_str {
         ___type_name_of___(___subfunction___)
             .strip_suffix("::___subfunction___")
             .expect("Suffix should exist!")
-    }}
+    }};
 }
 pub(crate) use this_fn_str;
 
 macro_rules! panic_if_in_startup_routine {
     () => {{
         if crate::startup::in_startup_routine() {
-            panic!("{}() cannot be called during a startup routine!", crate::startup::this_fn_str!());
+            panic!(
+                "{}() cannot be called during a startup routine!",
+                crate::startup::this_fn_str!()
+            );
         }
     }};
 }
@@ -92,7 +95,10 @@ pub(crate) use panic_if_in_startup_routine;
 macro_rules! panic_if_not_main_thread {
     () => {{
         if !crate::startup::is_main_thread() {
-            panic!("{}() cannot be called by any thread other than the main thread!", crate::startup::this_fn_str!());
+            panic!(
+                "{}() cannot be called by any thread other than the main thread!",
+                crate::startup::this_fn_str!()
+            );
         }
     }};
 }
@@ -141,13 +147,17 @@ static MAIN_THREAD_ID: std::sync::OnceLock<ThreadId> = std::sync::OnceLock::new(
 pub unsafe fn ___startup_routines_started___() {
     let this_thread = std::thread::current();
     let this_thread_id = this_thread.id();
-    MAIN_THREAD_ID.set(this_thread_id).expect("___startup_routines_started___() was called manually at some point!");
+    MAIN_THREAD_ID
+        .set(this_thread_id)
+        .expect("___startup_routines_started___() was called manually at some point!");
 }
 
 ///Should only be called by the vlog_startup_routines! macro, any other use is undefined behaviour
 #[doc(hidden)]
 pub unsafe fn ___startup_routines_finished___() {
-    INIT_FINISHED.set(()).expect("___startup_routines_finished___() was called manually at some point!");
+    INIT_FINISHED
+        .set(())
+        .expect("___startup_routines_finished___() was called manually at some point!");
 }
 
 ///Returns true if we are currently in a startup routine (and thus most SV interfaces are unavailable)
@@ -162,7 +172,9 @@ pub fn in_startup_routine() -> bool {
 pub fn is_main_thread() -> bool {
     let this_thread = std::thread::current();
     let this_thread_id = this_thread.id();
-    let main_thread_id = MAIN_THREAD_ID.get().expect("We should already know the main thread id");
+    let main_thread_id = MAIN_THREAD_ID
+        .get()
+        .expect("We should already know the main thread id");
     this_thread_id == *main_thread_id
 }
 

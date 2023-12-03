@@ -98,7 +98,10 @@ fn start_of_simulation_callback() {
 
     sim_println!("Simulator Product: \"{}\"", info::product_name().unwrap());
     sim_println!("Simulator Version: \"{}\"", info::version().unwrap());
-    sim_println!("Simulator Command Line Arguments: {:?}", info::arguments().unwrap());
+    sim_println!(
+        "Simulator Command Line Arguments: {:?}",
+        info::arguments().unwrap()
+    );
     //sim_println!("DPI Version: \"{}\"", info::dpi_version().unwrap());
 
     //TODO

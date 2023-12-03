@@ -51,7 +51,7 @@ use std::fmt::Display;
 
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum Error/*<'a>*/ {
+pub enum Error /*<'a>*/ {
     UnknownSimulatorError,
     //TODO others
     //TODO is 'static a correct assumption? Do the string pointers we are passed last forever?
@@ -72,9 +72,9 @@ pub enum Error/*<'a>*/ {
     },
     EnumConversion {
         from_int: i32,
-        to_enum: &'static str
+        to_enum: &'static str,
     },
-    Other(Box<dyn std::error::Error>)//A non sv-api error
+    Other(Box<dyn std::error::Error>), //A non sv-api error
 }
 
 //We box the Error to reduce the cost of the normal case when there are no errors
@@ -84,18 +84,18 @@ pub type Result<T> = std::result::Result<T, Box<Error>>;
 #[repr(i32)]
 pub enum State {
     Compile = sv_bindings::vpiCompile,
-    PLI     = sv_bindings::vpiPLI,
-    Run     = sv_bindings::vpiRun
+    PLI = sv_bindings::vpiPLI,
+    Run = sv_bindings::vpiRun,
 }
 
 #[derive(Clone, Copy, Debug)]
 #[repr(i32)]
 pub enum Severity {
-    Notice      = sv_bindings::vpiNotice,
-    Warning     = sv_bindings::vpiWarning,
-    Error       = sv_bindings::vpiError,
-    System      = sv_bindings::vpiSystem,
-    Internal    = sv_bindings::vpiInternal
+    Notice = sv_bindings::vpiNotice,
+    Warning = sv_bindings::vpiWarning,
+    Error = sv_bindings::vpiError,
+    System = sv_bindings::vpiSystem,
+    Internal = sv_bindings::vpiInternal,
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -107,7 +107,6 @@ impl Error {
     pub fn other(error: impl std::error::Error + 'static) -> Self {
         Error::Other(Box::new(error))
     }
-
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -124,7 +123,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Error::Other(other_boxed_error) => Some(other_boxed_error.as_ref()),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -132,9 +131,20 @@ impl std::error::Error for Error {
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::UnknownSimulatorError => write!(f, "Unknown or unclassified error from the simulator"),
-            Error::KnownSimulatorError { state_when_error_occurred, severity, message, product, code, file, line } => {
-                write!(f,
+            Error::UnknownSimulatorError => {
+                write!(f, "Unknown or unclassified error from the simulator")
+            }
+            Error::KnownSimulatorError {
+                state_when_error_occurred,
+                severity,
+                message,
+                product,
+                code,
+                file,
+                line,
+            } => {
+                write!(
+                    f,
                     "Simulator encountered an error!\n\
                      State when error occurred: {}\n\
                      Severity of error:         {}\n\
@@ -151,9 +161,13 @@ impl Display for Error {
                     file.to_string_lossy(),
                     line
                 )
-            },
-            Error::EnumConversion{from_int, to_enum} => write!(f, "Could not convert {} (i32) to type {}", from_int, to_enum),
-            Error::Other(other_boxed_error) => write!(f, "Other: {}", other_boxed_error)
+            }
+            Error::EnumConversion { from_int, to_enum } => write!(
+                f,
+                "Could not convert {} (i32) to type {}",
+                from_int, to_enum
+            ),
+            Error::Other(other_boxed_error) => write!(f, "Other: {}", other_boxed_error),
         }
     }
 }
@@ -170,9 +184,13 @@ impl TryFrom<i32> for State {
     fn try_from(value: i32) -> Result<Self> {
         match value {
             sv_bindings::vpiCompile => Ok(State::Compile),
-            sv_bindings::vpiPLI     => Ok(State::PLI),
-            sv_bindings::vpiRun     => Ok(State::Run),
-            _                       => Error::EnumConversion{from_int: value, to_enum: "State"}.into()
+            sv_bindings::vpiPLI => Ok(State::PLI),
+            sv_bindings::vpiRun => Ok(State::Run),
+            _ => Error::EnumConversion {
+                from_int: value,
+                to_enum: "State",
+            }
+            .into(),
         }
     }
 }
@@ -181,8 +199,8 @@ impl Display for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
         match self {
             State::Compile => write!(f, "Compile"),
-            State::PLI     => write!(f, "PLI"),
-            State::Run     => write!(f, "Run")
+            State::PLI => write!(f, "PLI"),
+            State::Run => write!(f, "Run"),
         }
     }
 }
@@ -192,12 +210,16 @@ impl TryFrom<i32> for Severity {
 
     fn try_from(value: i32) -> Result<Self> {
         match value {
-            sv_bindings::vpiNotice      => Ok(Severity::Notice),
-            sv_bindings::vpiWarning     => Ok(Severity::Warning),
-            sv_bindings::vpiError       => Ok(Severity::Error),
-            sv_bindings::vpiSystem      => Ok(Severity::System),
-            sv_bindings::vpiInternal    => Ok(Severity::Internal),
-            _                           => Error::EnumConversion{from_int: value, to_enum: "Severity"}.into()
+            sv_bindings::vpiNotice => Ok(Severity::Notice),
+            sv_bindings::vpiWarning => Ok(Severity::Warning),
+            sv_bindings::vpiError => Ok(Severity::Error),
+            sv_bindings::vpiSystem => Ok(Severity::System),
+            sv_bindings::vpiInternal => Ok(Severity::Internal),
+            _ => Error::EnumConversion {
+                from_int: value,
+                to_enum: "Severity",
+            }
+            .into(),
         }
     }
 }
@@ -205,11 +227,11 @@ impl TryFrom<i32> for Severity {
 impl Display for Severity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Severity::Notice    => write!(f, "Notice"),
-            Severity::Warning   => write!(f, "Warning"),
-            Severity::Error     => write!(f, "Error"),
-            Severity::System    => write!(f, "System"),
-            Severity::Internal  => write!(f, "Internal")
+            Severity::Notice => write!(f, "Notice"),
+            Severity::Warning => write!(f, "Warning"),
+            Severity::Error => write!(f, "Error"),
+            Severity::System => write!(f, "System"),
+            Severity::Internal => write!(f, "Internal"),
         }
     }
 }
@@ -223,11 +245,11 @@ pub(crate) fn from_last_vpi_call() -> Result<()> {
     let mut raw_error_info = sv_bindings::s_vpi_error_info {
         state: 0,
         level: 0,
-        message:    std::ptr::null_mut(),
-        product:    std::ptr::null_mut(),
-        code:       std::ptr::null_mut(),
-        file:       std::ptr::null_mut(),
-        line: 0
+        message: std::ptr::null_mut(),
+        product: std::ptr::null_mut(),
+        code: std::ptr::null_mut(),
+        file: std::ptr::null_mut(),
+        line: 0,
     };
 
     //SAFETY: raw_error_info is valid, so vpi_check_error is free to modify it
@@ -237,14 +259,21 @@ pub(crate) fn from_last_vpi_call() -> Result<()> {
         Ok(())
     } else {
         Error::KnownSimulatorError {
-            state_when_error_occurred: raw_error_info.state.try_into().expect("We should get a legal state from the simulator"),
-            severity:   raw_error_info.level.try_into().expect("We should get a legal level from the simulator"),
-            message:    unsafe { CStr::from_ptr(raw_error_info.message) },
-            product:    unsafe { CStr::from_ptr(raw_error_info.product) },
-            code:       unsafe { CStr::from_ptr(raw_error_info.code) },
-            file:       unsafe { CStr::from_ptr(raw_error_info.file) },
-            line:       raw_error_info.line
-        }.into()
+            state_when_error_occurred: raw_error_info
+                .state
+                .try_into()
+                .expect("We should get a legal state from the simulator"),
+            severity: raw_error_info
+                .level
+                .try_into()
+                .expect("We should get a legal level from the simulator"),
+            message: unsafe { CStr::from_ptr(raw_error_info.message) },
+            product: unsafe { CStr::from_ptr(raw_error_info.product) },
+            code: unsafe { CStr::from_ptr(raw_error_info.code) },
+            file: unsafe { CStr::from_ptr(raw_error_info.file) },
+            line: raw_error_info.line,
+        }
+        .into()
     }
 }
 
