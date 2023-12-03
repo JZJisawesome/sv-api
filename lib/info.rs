@@ -29,6 +29,7 @@
 use crate::startup::panic_if_in_startup_routine;
 use crate::startup::panic_if_not_main_thread;
 
+use crate::result;
 use crate::result::Error;
 use crate::result::Result;
 
@@ -142,20 +143,21 @@ pub fn dpi_version() -> Result<&'static str> {
     panic_if_in_startup_routine!();
     panic_if_not_main_thread!();
 
-    Ok(dpi_version_cstr().to_str().map_err(|e| Error::other(e))?)
+    Ok(dpi_version_cstr()?.to_str().map_err(|e| Error::other(e))?)
 }
 
 //TODO is 'static a correct assumption? Do the string pointers we are passed last forever?
-pub fn dpi_version_cstr() -> &'static CStr {
+pub fn dpi_version_cstr() -> Result<&'static CStr> {
     panic_if_in_startup_routine!();
     panic_if_not_main_thread!();
 
     //SAFETY: We assume svDpiVersion() returns a proper null-terminated string
-    unsafe {
+    Ok(unsafe {
         let raw_dpi_version_str_ptr = sv_bindings::svDpiVersion();
-        assert!(!raw_dpi_version_str_ptr.is_null());
+        debug_assert!(!raw_dpi_version_str_ptr.is_null());
+        result::from_last_vpi_call()?;
         std::ffi::CStr::from_ptr(sv_bindings::svDpiVersion())
-    }
+    })
 }
 
 //TODO is 'static a correct assumption? Do the string pointers we are passed last forever?
@@ -172,10 +174,12 @@ fn vpi_get_safe_vlog_info_wrapper() -> Result<SafeVlogInfoWrapper<'static>> {
 
     //SAFETY: vpi_get_vlog_info() is safe to call from the main thread
     //and we are not in a startup routine so we're good.
-    unsafe {
-        if sv_bindings::vpi_get_vlog_info(&mut raw_info) != 1 {
-            return Error::Unknown.into();//TODO be more detailed
-        }
+    let result = unsafe { sv_bindings::vpi_get_vlog_info(&mut raw_info) };
+
+    result::from_last_vpi_call()?;
+
+    if result != 1 {
+        return Error::UnknownSimulatorError.into();
     }
 
     //Package up command line arguments/arguments from an "options" file into a Vec
@@ -187,7 +191,7 @@ fn vpi_get_safe_vlog_info_wrapper() -> Result<SafeVlogInfoWrapper<'static>> {
         //which is the number of elements in argv guaranteed by the LRM.
         let arg_str_ptr = unsafe { *(raw_info.argv.add(i)) };
 
-        assert!(!arg_str_ptr.is_null(), "Got null pointer from simulator where one was not expected!");
+        debug_assert!(!arg_str_ptr.is_null(), "Got null pointer from simulator where one was not expected!");
 
         //SAFETY: We should have been given a valid null-terminated string
         let arg_str = unsafe { std::ffi::CStr::from_ptr(arg_str_ptr) };
@@ -196,8 +200,8 @@ fn vpi_get_safe_vlog_info_wrapper() -> Result<SafeVlogInfoWrapper<'static>> {
     }
 
     //Package up the simulator's product name and version
-    assert!(!raw_info.product.is_null(), "Got null pointer from simulator where one was not expected!");
-    assert!(!raw_info.version.is_null(), "Got null pointer from simulator where one was not expected!");
+    debug_assert!(!raw_info.product.is_null(), "Got null pointer from simulator where one was not expected!");
+    debug_assert!(!raw_info.version.is_null(), "Got null pointer from simulator where one was not expected!");
 
     //SAFETY: We should have been given valid null-terminated strings
     let product_name    = unsafe { std::ffi::CStr::from_ptr(raw_info.product) };

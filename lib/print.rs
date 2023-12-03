@@ -31,6 +31,7 @@
  * Uses
  * --------------------------------------------------------------------------------------------- */
 
+use crate::result;
 use crate::result::Error;
 use crate::result::Result;
 use crate::startup::panic_if_in_startup_routine;
@@ -109,11 +110,14 @@ impl SimulatorPrinter {
         panic_if_not_main_thread!();
 
         //SAFETY: We're calling vpi_flush() from the main thread and after startup routines have finished
-        if unsafe { sv_bindings::vpi_flush() } == 0 {
+        let result = unsafe { sv_bindings::vpi_flush() };
+
+        result::from_last_vpi_call()?;
+
+        if result == 0 {
             Ok(())
         } else {
-            //TODO perhaps return a VpiError? using vpi_chk_error()?
-            Error::Unknown.into()
+            Error::UnknownSimulatorError.into()
         }
     }
 
@@ -147,11 +151,12 @@ impl SimulatorPrinter {
             sv_bindings::vpi_printf(FORMAT_STRING_PTR as *mut _, cstr.as_ptr())
         };
 
+        result::from_last_vpi_call()?;
+
         if num_bytes_written == num_bytes {
             Ok(())
         } else {//EOF or more or less bytes written than expected
-            //TODO perhaps return a VpiError? using vpi_chk_error()?
-            Error::Unknown.into()
+            Error::UnknownSimulatorError.into()
         }
     }
 }
