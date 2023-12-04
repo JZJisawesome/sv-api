@@ -35,7 +35,7 @@ macro_rules! vlog_startup_routines {
     ($($arg:ident),*) => {//TODO support closures, functions in another module or part of a trait (with::), etc
         #[doc(hidden)]
         mod ___sv_api_vlog_startup_routines___ {
-            extern "C" fn ___sv_api_call_vlog_startup_routines___() {
+            unsafe extern "C" fn ___sv_api_call_vlog_startup_routines___() {
                 //SAFETY: This is the only place we allow this function to be called without
                 //warning that the caller would violate safety by doing so.
                 unsafe { ::sv_api::startup::___startup_routines_started___(); }
@@ -58,7 +58,7 @@ macro_rules! vlog_startup_routines {
             //and reference this symbol will expect this to be upheld
             #[no_mangle]
             #[used]
-            static vlog_startup_routines: [Option<extern "C" fn()>; 2usize] = [
+            static vlog_startup_routines: [Option<unsafe extern "C" fn()>; 2usize] = [
                 Some(___sv_api_call_vlog_startup_routines___),
                 None
             ];

@@ -24,6 +24,7 @@ use crate::startup::panic_if_in_startup_routine;
 use crate::startup::panic_if_not_main_thread;
 
 use std::ffi::{CStr, CString};
+use std::ptr::{self, NonNull};
 
 /* ------------------------------------------------------------------------------------------------
  * Uses
@@ -55,7 +56,7 @@ use std::ffi::{CStr, CString};
 
 #[derive(Debug)]
 #[repr(transparent)]//To help with the null pointer optimization
-pub struct ObjectHandle(std::ptr::NonNull<sv_bindings::PLI_UINT32>);
+pub struct ObjectHandle(NonNull<sv_bindings::PLI_UINT32>);
 
 #[derive(Debug)]
 pub struct ObjectChildrenIterator {
@@ -513,6 +514,13 @@ impl ObjectHandle {
 
         todo!()//TODO
     }
+
+    //TODO provide function to cleanup callback
+
+    //Shouldn't be null and should be a valid handle pointer
+    pub(crate) unsafe fn from_raw(raw: sv_bindings::vpiHandle) -> Self {
+        Self(NonNull::new(raw).expect("Null pointer shouldn't be passed to ObjectHandle::from_raw"))
+    }
 }
 
 impl ObjectChildrenIterator {
@@ -521,14 +529,15 @@ impl ObjectChildrenIterator {
         panic_if_not_main_thread!();
 
         //SAFETY: It is legal to pass vpi_iterate a null pointer, and object_type is valid
-        let raw_handle = unsafe { sv_bindings::vpi_iterate(object_type as i32, std::ptr::null_mut()) };
+        let raw_handle = unsafe { sv_bindings::vpi_iterate(object_type as i32, ptr::null_mut()) };
 
         result::from_last_vpi_call()?;
 
         let iterator_handle = if raw_handle.is_null() {//No children with the given type
             None
         } else {
-            Some(ObjectHandle(std::ptr::NonNull::new(raw_handle).expect("Already checked if null")))
+            //SAFETY: The handle is not null and is valid since it was returned by vpi_iterate
+            Some(unsafe { ObjectHandle::from_raw(raw_handle) })
         };
 
         Ok(ObjectChildrenIterator {
@@ -548,7 +557,8 @@ impl ObjectChildrenIterator {
         let iterator_handle = if raw_handle.is_null() {//No children with the given type
             None
         } else {
-            Some(ObjectHandle(std::ptr::NonNull::new(raw_handle).expect("Already checked if null")))
+            //SAFETY: The handle is not null and is valid since it was returned by vpi_iterate
+            Some(unsafe { ObjectHandle::from_raw(raw_handle) })
         };
 
         Ok(ObjectChildrenIterator {
@@ -636,7 +646,8 @@ impl Iterator for ObjectChildrenIterator {
             self.iterator_handle = None; //Iterator handle is now invalid (this drops it)
             None
         } else {
-            Some(ObjectHandle(std::ptr::NonNull::new(raw_handle_from_scan).unwrap()))
+            //SAFETY: The handle is not null and is valid since it was returned by vpi_iterate
+            Some(unsafe { ObjectHandle::from_raw(raw_handle_from_scan) })
         }
     }
 }

@@ -23,7 +23,14 @@
  * Uses
  * --------------------------------------------------------------------------------------------- */
 
-//TODO (includes "use ..." and "extern crate ...")
+use crate::object::ObjectHandle;
+use crate::result;
+use crate::result::Error;
+use crate::result::Result;
+use crate::startup::panic_if_not_main_thread;
+
+use std::marker::PhantomPinned;
+use std::pin::Pin;
 
 /* ------------------------------------------------------------------------------------------------
  * Macros
@@ -42,17 +49,6 @@
  * --------------------------------------------------------------------------------------------- */
 
 //TODO
-//TESTING
-static mut START_OF_SIM_CALLBACK_DATA: sv_bindings::t_cb_data = sv_bindings::t_cb_data {
-    reason: sv_bindings::cbAtStartOfSimTime,
-    cb_rtn: None, //Some(start_of_sim_callback),
-    obj: std::ptr::null_mut(),
-    time: std::ptr::null_mut(),
-    //time: unsafe { &mut VPI_TIME },//Doesn't work :(
-    value: std::ptr::null_mut(),
-    index: 0,
-    user_data: std::ptr::null_mut(),
-};
 
 /* ------------------------------------------------------------------------------------------------
  * Types
@@ -84,9 +80,10 @@ pub enum CallbackReason {
 }
 
 struct CallbackDataWrapper {
-    //Self referential
+    //Self referential; raw_cb_data.user_data is made to be a pointer to the outer wrapper struct
     raw_cb_data: sv_bindings::t_cb_data,
-    func: Option<Box<dyn FnMut()>>,
+    func: Box<dyn FnMut()>,
+    _pin: PhantomPinned,
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -94,10 +91,14 @@ struct CallbackDataWrapper {
  * --------------------------------------------------------------------------------------------- */
 
 impl CallbackDataWrapper {
-    fn make_self_referential(&mut self) {
-        //Only call this when the wrapper has been pinned in memory
-        let self_ptr: *mut CallbackDataWrapper = self;
-        self.raw_cb_data.user_data = self_ptr.cast();
+    unsafe extern "C" fn closure_callback_wrapper(cb_data: *mut sv_bindings::t_cb_data) -> i32 {
+        let self_ptr: *mut CallbackDataWrapper = (*cb_data).user_data.cast();
+        let self_ref: &mut CallbackDataWrapper = &mut *self_ptr;
+        //TODO passthru callback reasons to the user
+        //No need to pass user data thru since they could have just used a closure which will have
+        //whatever data they desire associated with it
+        (self_ref.func)();
+        0
     }
 }
 
@@ -111,44 +112,51 @@ impl CallbackBuilder {
         self
     }
 
-    extern "C" fn closure_wrapper(cb_data: *mut sv_bindings::t_cb_data) -> i32 {
-        //TODO justify safety
-        unsafe {
-            //https://users.rust-lang.org/t/why-cant-a-convert-a-mut-c-void-into-mut-dyn-std-read/95780/7
-            //TODO try to make this more efficient in the future
-            let thin_ptr: *mut *mut dyn FnMut() = (*cb_data).user_data.cast();
-            let fat_ptr: *mut dyn FnMut() = *thin_ptr;
-            (*fat_ptr)(); //TODO pass the closure extra info about what happened
-                          //No need to re-box things since the closure may be re-called multiple times and we
-                          //don't want to drop it
-                          //FIXME how should we clean this up at the end?
-                          //FIXME what if this is called from multiple threads?
+    pub fn register(mut self) -> Result<ObjectHandle> {
+        panic_if_not_main_thread!();
+
+        //TODO allow the user to specify most of this via the builder functions
+
+        let time = Time::SimTime { high: 0, low: 1 };
+        let ctime: sv_bindings::t_vpi_time = time.into();
+        let ctimebox = Box::new(ctime);
+
+        let callback_data_wrapper = CallbackDataWrapper {
+            raw_cb_data: sv_bindings::t_cb_data {
+                reason: sv_bindings::cbAtStartOfSimTime,
+                cb_rtn: Some(CallbackDataWrapper::closure_callback_wrapper),
+                obj: std::ptr::null_mut(),
+                time: Box::into_raw(ctimebox),
+                //time: unsafe { &mut VPI_TIME },//Doesn't work :(
+                value: std::ptr::null_mut(),
+                index: 0,
+                user_data: std::ptr::null_mut(),
+            },
+            func: self.func.take().ok_or(Error::InvalidCallbackConfig)?,
+            _pin: PhantomPinned,
         };
 
-        0
-    }
+        let mut pinned_boxed_callback_data_wrapper = Box::pin(callback_data_wrapper);
+        let pinned_callback_data_wrapper_ref: Pin<&mut CallbackDataWrapper> =
+            Pin::as_mut(&mut pinned_boxed_callback_data_wrapper);
 
-    pub fn register(mut self) {
-        //TESTING
-        unsafe {
-            START_OF_SIM_CALLBACK_DATA.cb_rtn = Some(CallbackBuilder::closure_wrapper); //Some(self.func.unwrap());
-            let time = Time::SimTime { high: 0, low: 1 };
-            let ctime: sv_bindings::t_vpi_time = time.into();
-            let ctimebox = Box::new(ctime);
-            START_OF_SIM_CALLBACK_DATA.time = Box::into_raw(ctimebox);
+        //TODO justify safety
+        let cb_handle = unsafe {
+            //Safe to do as_mut since modifying a field of the wrapper doesn't move the whole thing
+            let callback_data_wrapper_ref = pinned_callback_data_wrapper_ref.get_unchecked_mut();
 
-            assert!(self.func.is_some());
-            let boxed_closure = self.func.take().unwrap();
-            //https://users.rust-lang.org/t/why-cant-a-convert-a-mut-c-void-into-mut-dyn-std-read/95780/7
-            //TODO try to make this more efficient in the future
-            let fat_ptr: *mut dyn FnMut() = Box::into_raw(boxed_closure);
-            let boxed_fat_ptr = Box::new(fat_ptr);
-            let thin_ptr: *mut *mut dyn FnMut() = Box::into_raw(boxed_fat_ptr);
-            START_OF_SIM_CALLBACK_DATA.user_data = thin_ptr.cast();
+            let callback_data_wrapper_ptr: *mut CallbackDataWrapper = callback_data_wrapper_ref;
+            callback_data_wrapper_ref.raw_cb_data.user_data = callback_data_wrapper_ptr as *mut _;
 
-            //TODO in the wrapper around the registration callback panic if SupressTime or Time is NULL
-            sv_bindings::vpi_register_cb(&mut START_OF_SIM_CALLBACK_DATA);
-        }
+            let raw_cb_handle_ptr = sv_bindings::vpi_register_cb(&mut callback_data_wrapper_ref.raw_cb_data);
+            result::from_last_vpi_call()?;
+            ObjectHandle::from_raw(raw_cb_handle_ptr)
+        };
+
+        //TODO avoid memory leaks, but still clean up things somehow
+        std::mem::forget(pinned_boxed_callback_data_wrapper);
+
+        Ok(cb_handle)
     }
 }
 

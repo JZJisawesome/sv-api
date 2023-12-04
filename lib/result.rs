@@ -74,6 +74,7 @@ pub enum Error /*<'a>*/ {
         from_int: i32,
         to_enum: &'static str,
     },
+    InvalidCallbackConfig,
     Other(Box<dyn std::error::Error>), //A non sv-api error
 }
 
@@ -167,6 +168,7 @@ impl Display for Error {
                 "Could not convert {} (i32) to type {}",
                 from_int, to_enum
             ),
+            Error::InvalidCallbackConfig => write!(f, "Invalid callback configuration"),
             Error::Other(other_boxed_error) => write!(f, "Other: {}", other_boxed_error),
         }
     }

@@ -78,9 +78,12 @@ fn hello_world() {
 
 fn setup_callback() {
     let time = callbacks::Time::SimTime { high: 1, low: 2 };
-    callbacks::CallbackBuilder::new()
+    let cb_handle = callbacks::CallbackBuilder::new()
         .call(start_of_simulation_callback)
-        .register();
+        .register()
+        .unwrap();
+
+    std::mem::forget(cb_handle);//To avoid dropping it during a startup routine//TODO clean this up properly
 }
 
 fn start_of_simulation_callback() {
